@@ -1,5 +1,4 @@
 -- DESCRIPTION: Sets up the database schema for the Geo-Health project.
-
 -- -----------------------------------------------------------------------------
 -- EXTENSIONS
 -- Enable PostGIS for spatial data types and functions (e.g., GEOMETRY, ST_MakePoint).
@@ -20,12 +19,15 @@ DROP TABLE IF EXISTS hospitals CASCADE;
 --
 -- Table: hospitals
 -- Purpose: Stores information about hospitals and health centers, including their
--- geographic location.
+-- geographic location and contact details.
 --
 CREATE TABLE hospitals (
     hospital_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     address TEXT,
+    phone VARCHAR(20),
+    pincode VARCHAR(10),
+    website_link VARCHAR(255),
     -- The 'geom' column stores the location as a point in the WGS 84 coordinate system (SRID 4326),
     -- which is the standard for GPS.
     geom GEOMETRY(Point, 4326)

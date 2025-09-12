@@ -14,7 +14,16 @@ function ResultsPanel({ results }) {
             <strong>{result.hospital_name}</strong>
             <p>{result.address}</p>
             <p><strong>Distance:</strong> {(result.distance_in_meters / 1000).toFixed(2)} km</p>
-            <p><strong>Available Doctors:</strong> {result.available_doctors.join(', ')}</p>
+            <div className="doctor-list">
+              <strong>Available Doctors:</strong>
+              <ul>
+                {result.available_doctors.map((doctor, docIndex) => (
+                  <li key={docIndex}>
+                    {doctor.name} ({doctor.start_time} - {doctor.end_time})
+                  </li>
+                ))}
+              </ul>
+            </div>
           </li>
         ))}
       </ul>

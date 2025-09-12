@@ -1,9 +1,13 @@
 const { Pool } = require('pg');
+require('dotenv').config(); 
 
-// The Pool will automatically use the environment variables
-// (PGUSER, PGHOST, PGDATABASE, PGPASSWORD, PGPORT) if they are set,
-// which dotenv handles for us.
-const pool = new Pool();
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_DATABASE,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
 
 // Export a query function that we can use throughout the application
 module.exports = {

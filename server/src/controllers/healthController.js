@@ -1,107 +1,82 @@
 const db = require('../db');
-const { formatToGeoJSON } = require('../utils/spatialHelpers');
-
 /**
- * @description Get all hospitals and return them in GeoJSON format.
+ * @description Search for hospitals. Can be filtered by a query string (q)
+ * that matches hospital name, doctor name, or doctor specialization.
+ * Always returns hospitals sorted by distance from the user.
  */
-exports.getAllHospitals = async (req, res) => {
-  try {
-    const query = `
-      SELECT
-        h.hospital_id,
-        h.name,
-        h.address,
-        -- Convert the geometry to a GeoJSON string
-        ST_AsGeoJSON(h.geom) AS geometry
-      FROM hospitals h;
-    `;
-    const { rows } = await db.query(query); 
-    // Use a helper function to format the flat list into a valid GeoJSON FeatureCollection
-    const geoJson = formatToGeoJSON(rows);
-    res.status(200).json(geoJson);
-  } catch (err) {
-    console.error('Error fetching hospitals:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
+exports.searchHospitals = async (req, res) => {
+    const { lat, lon, q } = req.query;
+
+    if (!lat || !lon) {
+        return res.status(400).json({ error: 'Latitude and longitude are required.' });
+    }
+
+    const userLocation = `ST_SetSRID(ST_MakePoint(${parseFloat(lon)}, ${parseFloat(lat)}), 4326)`;
+    const searchQuery = q ? `%${q}%` : '%';
+
+    try {
+        const query = `
+            WITH MatchedHospitals AS (
+                -- Find hospital IDs that match the search query
+                SELECT DISTINCT h.hospital_id
+                FROM hospitals h
+                LEFT JOIN doctor_availability da ON h.hospital_id = da.hospital_id
+                LEFT JOIN doctors d ON da.doctor_id = d.doctor_id
+                WHERE
+                    h.name ILIKE $1 OR
+                    d.name ILIKE $1 OR
+                    d.specialization ILIKE $1
+            )
+            SELECT
+                h.hospital_id,
+                h.name,
+                h.address,
+                ST_X(h.geom) as lon,
+                ST_Y(h.geom) as lat,
+                -- Calculate distance in meters (straight line)
+                ST_DistanceSphere(h.geom, ${userLocation}) AS distance_in_meters
+            FROM hospitals h
+            -- If a search query is provided, join with matches, otherwise include all
+            ${q ? 'JOIN MatchedHospitals mh ON h.hospital_id = mh.hospital_id' : ''}
+            ORDER BY distance_in_meters ASC;
+        `;
+
+        const { rows } = await db.query(query, [searchQuery]);
+        res.status(200).json(rows);
+    } catch (err) {
+        console.error('Error searching hospitals:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 };
 
 /**
- * @description Find the nearest available doctors based on user location and specialization.
+ * @description Get available doctors and their schedules for a specific hospital on a given date.
  */
-exports.findNearestDoctors = async (req, res) => {
-  const { lat, lon, specialization } = req.query;
-
-  // Basic validation
-  if (!lat || !lon || !specialization) {
-    return res.status(400).json({ error: 'Latitude, longitude, and specialization are required.' });
-  }
-
-  try {
-    // This is a multi-step query to find the nearest available doctor by road network distance.
-    // 1. Find doctors of the required specialization who are available right now.
-    // 2. Get the unique hospitals where they work.
-    // 3. Use pgRouting (pgr_dijkstra) to calculate the shortest path from the user's location
-    //    to each of these candidate hospitals.
-    // 4. Order the results by distance and return the closest ones.
-
-    const query = `
-        WITH AvailableDoctors AS (
-            -- Step 1: Find available doctors of the given specialization
-            SELECT DISTINCT
-                da.hospital_id,
-                d.name AS doctor_name,
-                d.specialization
-            FROM doctors d
-            JOIN doctor_availability da ON d.doctor_id = da.doctor_id
-            WHERE
-                d.specialization ILIKE $1
-                AND da.day_of_week = EXTRACT(ISODOW FROM CURRENT_DATE) -- Check for today's day of week
-                AND CURRENT_TIME BETWEEN da.start_time AND da.end_time -- Check for current time
-        ),
-        CandidateHospitals AS (
-            -- Step 2: Get the locations of the hospitals where these doctors work
-            SELECT
-                h.hospital_id,
-                h.name AS hospital_name,
-                h.address,
-                h.geom,
-                -- Find the closest node on the road network to each hospital
-                (SELECT id FROM roads_vertices_pgr ORDER BY the_geom <-> h.geom LIMIT 1) AS hospital_node
-            FROM hospitals h
-            WHERE h.hospital_id IN (SELECT hospital_id FROM AvailableDoctors)
-        )
-        -- Step 3: Calculate shortest path from user to each candidate hospital
-        SELECT
-            ch.hospital_name,
-            ch.address,
-            -- Aggregate all available doctors at that hospital
-            array_agg(ad.doctor_name) as available_doctors,
-            -- The aggregated cost from pgr_dijkstra is the distance in meters
-            pgr.agg_cost AS distance_in_meters
-        FROM pgr_dijkstra(
-            'SELECT gid AS id, source, target, length_m AS cost FROM roads',
-            -- Find the closest road network node to the user's location
-            (SELECT id FROM roads_vertices_pgr ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint($3, $2), 4326) LIMIT 1),
-            -- An array of all candidate hospital nodes
-            (SELECT array_agg(hospital_node) FROM CandidateHospitals),
-            false -- Use an undirected graph (roads go both ways)
-        ) AS pgr
-        JOIN CandidateHospitals ch ON pgr.end_vid = ch.hospital_node
-        JOIN AvailableDoctors ad ON ch.hospital_id = ad.hospital_id
-        GROUP BY ch.hospital_name, ch.address, pgr.agg_cost
-        ORDER BY distance_in_meters ASC -- Step 4: Order by distance
-        LIMIT 5; -- Return the top 5 closest results
-    `;
-
-    const { rows } = await db.query(query, [`%${specialization}%`, parseFloat(lat), parseFloat(lon)]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: 'No available doctors found matching your criteria.' });
-    }
+exports.getDoctorsByHospital = async (req, res) => {
+    const { id } = req.params;
+    const { date } = req.query;
     
-    res.status(200).json(rows);
-  } catch (err) {
-    console.error('Error finding nearest doctors:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
+    // Default to today if no date is provided
+    const searchDate = date ? new Date(date) : new Date();
+
+    try {
+        const query = `
+            SELECT
+                d.name,
+                d.specialization,
+                to_char(da.start_time, 'HH24:MI') as start_time,
+                to_char(da.end_time, 'HH24:MI') as end_time
+            FROM doctor_availability da
+            JOIN doctors d ON da.doctor_id = d.doctor_id
+            WHERE
+                da.hospital_id = $1
+                AND da.day_of_week = EXTRACT(ISODOW FROM $2::date)
+            ORDER BY d.specialization, d.name;
+        `;
+        const { rows } = await db.query(query, [id, searchDate]);
+        res.status(200).json(rows);
+    } catch (err) {
+        console.error('Error fetching doctors for hospital:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 };

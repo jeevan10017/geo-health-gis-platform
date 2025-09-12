@@ -1,6 +1,3 @@
-// DESCRIPTION: Main Express server file.
-
-// Load environment variables from .env file
 require('dotenv').config();
 
 const express = require('express');
