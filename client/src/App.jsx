@@ -7,7 +7,7 @@ import { searchHospitals, getDoctorsForHospital } from './services/apiService';
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
 function App() {
-    // --- States ---
+    // --- State Management ---
     const [userLocation, setUserLocation] = useState(null);
     const [hospitals, setHospitals] = useState([]);
     const [selectedHospital, setSelectedHospital] = useState(null);
