@@ -1,33 +1,35 @@
+// src/services/apiService.js
 
 import axios from 'axios';
-
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 /**
- * Searches for hospitals based on user location and an optional query.
- * @param {number} lat - User's latitude.
- * @param {number} lon - User's longitude.
- * @param {string} query - Search term (hospital, doctor, specialization).
+ * @description NEW: Performs an advanced search for available doctors/hospitals.
+ * @param {object} params - An object containing lat, lon, and other optional filters.
+ * e.g., { lat: 22.3, lon: 87.3, q: 'cardiology', date: '2025-09-14' }
  */
-export const searchHospitals = async (lat, lon, query = '') => {
+export const advancedSearch = async (params) => {
     try {
-        const response = await axios.get(`${API_URL}/hospitals`, {
-            params: { lat, lon, q: query },
-        });
+        // We use the /search endpoint now
+        const response = await axios.get(`${API_URL}/search`, { params });
         return response.data;
     } catch (error) {
-        console.error('Error searching hospitals:', error);
-        throw new Error(error.response?.data?.error || 'Failed to find hospitals.');
+        console.error('Error during advanced search:', error);
+        throw new Error(error.response?.data?.error || 'Failed to perform search.');
     }
 };
 
 /**
- * Fetches the available doctors for a specific hospital.
+ * @description MODIFIED: Fetches doctors for a hospital, now with filtering.
  * @param {number} hospitalId - The ID of the hospital.
+ * @param {string} date - The selected date ('YYYY-MM-DD').
+ * @param {string} query - A search term for doctor name/specialty.
  */
-export const getDoctorsForHospital = async (hospitalId) => {
+export const getDoctorsForHospital = async (hospitalId, date, query = '') => {
     try {
-        const response = await axios.get(`${API_URL}/hospitals/${hospitalId}/doctors`);
+        const response = await axios.get(`${API_URL}/hospitals/${hospitalId}/doctors`, {
+            params: { date, q: query } // Pass date and query as params
+        });
         return response.data;
     } catch (error) {
         console.error('Error fetching doctors:', error);
