@@ -4,7 +4,7 @@ import 'leaflet-routing-machine';
 import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 import { useMap } from 'react-leaflet';
 
-const RoutingMachine = ({ start, end }) => {
+const RoutingMachine = ({ start, end, onRouteFound }) => {
     const map = useMap();
 
     useEffect(() => {
@@ -12,18 +12,26 @@ const RoutingMachine = ({ start, end }) => {
 
         const routingControl = L.Routing.control({
             waypoints: [L.latLng(start[0], start[1]), L.latLng(end[0], end[1])],
-            routeWhileDragging: true,
+            routeWhileDragging: false,
+            // --- Customizations ---
             lineOptions: {
-                styles: [{ color: '#6FA1EC', weight: 4 }],
+                styles: [{ color: '#ec4899', weight: 6, opacity: 0.8 }], // Pink route
             },
-            show: false, // Hide the turn-by-turn instructions panel
-            addWaypoints: false,
-            draggableWaypoints: false,
+            show: true, // Hide the default instructions panel
+            addWaypoints: true,
             fitSelectedRoutes: true,
+            createMarker: () => null // Hide the default start/end markers
         }).addTo(map);
+        
+        // --- Callback for instructions ---
+        if (onRouteFound) {
+            routingControl.on('routesfound', (e) => {
+                onRouteFound(e.routes[0]);
+            });
+        }
 
         return () => map.removeControl(routingControl);
-    }, [map, start, end]);
+    }, [map, start, end, onRouteFound]);
 
     return null;
 };

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import RoutingMachine from './RoutingMachine';
+import RoutingMachine from '../map/RoutingMachine';
 import L from 'leaflet';
 
 // Fix for default markers in react-leaflet
@@ -32,7 +32,7 @@ function ChangeView({ center, zoom }) {
   return null;
 }
 
-function MapView({ hospitals, userLocation, hospital }) {
+function MapView({ hospitals, userLocation, hospital,onMarkerClick }) {
   const defaultCenter = [22.34, 87.31]; // Kharagpur
   const mapCenter = userLocation || defaultCenter;
   
@@ -94,9 +94,19 @@ function MapView({ hospitals, userLocation, hospital }) {
         }
         const position = [h.lat, h.lon];
         return (
-          <Marker key={h.hospital_id} position={position} icon={hospitalIcon}>
-            <Popup>{renderPopup(h)}</Popup>
-          </Marker>
+          <Marker
+                        key={h.hospital_id}
+                        position={position}
+                        icon={hospitalIcon}
+                        // Add event handler here
+                        eventHandlers={{
+                            click: () => {
+                                onMarkerClick(h.hospital_id);
+                            },
+                        }}
+                    >
+                        <Popup>{renderPopup(h)}</Popup>
+                    </Marker>
         );
       })}
     </MapContainer>

@@ -1,38 +1,70 @@
-// src/services/apiService.js
-
 import axios from 'axios';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
-/**
- * @description NEW: Performs an advanced search for available doctors/hospitals.
- * @param {object} params - An object containing lat, lon, and other optional filters.
- * e.g., { lat: 22.3, lon: 87.3, q: 'cardiology', date: '2025-09-14' }
- */
-export const advancedSearch = async (params) => {
+const handleApiError = (error, defaultMessage) => {
+    console.error(`API Error: ${defaultMessage}`, error);
+    throw new Error(error.response?.data?.error || defaultMessage);
+};
+
+export const getInitialHospitals = async (lat, lon) => {
     try {
-        // We use the /search endpoint now
-        const response = await axios.get(`${API_URL}/search`, { params });
+        const response = await axios.get(`${API_URL}/initial-hospitals`, { params: { lat, lon } });
         return response.data;
     } catch (error) {
-        console.error('Error during advanced search:', error);
-        throw new Error(error.response?.data?.error || 'Failed to perform search.');
+        handleApiError(error, 'Failed to fetch nearby hospitals.');
     }
 };
 
-/**
- * @description MODIFIED: Fetches doctors for a hospital, now with filtering.
- * @param {number} hospitalId - The ID of the hospital.
- * @param {string} date - The selected date ('YYYY-MM-DD').
- * @param {string} query - A search term for doctor name/specialty.
- */
+export const fetchAutocompleteSuggestions = async (query, lat, lon) => {
+    if (!query) return [];
+    try {
+        const response = await axios.get(`${API_URL}/autocomplete`, { params: { q: query, lat, lon } });
+        return response.data;
+    } catch (error) {
+        // Fail silently for autocomplete
+        console.error('Autocomplete fetch failed:', error);
+        return [];
+    }
+};
+
+export const searchBySpecialty = async (specialty, lat, lon, date) => {
+    try {
+        const params = { q: specialty, lat, lon, date };
+        // Remove empty params
+        Object.keys(params).forEach(key => !params[key] && delete params[key]);
+        const response = await axios.get(`${API_URL}/search`, { params });
+        return response.data;
+    } catch (error) {
+        handleApiError(error, 'Failed to perform specialty search.');
+    }
+};
+
+export const getHospitalDetails = async (hospitalId) => {
+    try {
+        const response = await axios.get(`${API_URL}/hospitals/${hospitalId}`);
+        return response.data;
+    } catch (error) {
+        handleApiError(error, 'Failed to fetch hospital details.');
+    }
+};
+
 export const getDoctorsForHospital = async (hospitalId, date, query = '') => {
     try {
         const response = await axios.get(`${API_URL}/hospitals/${hospitalId}/doctors`, {
-            params: { date, q: query } // Pass date and query as params
+            params: { date, q: query }
         });
         return response.data;
     } catch (error) {
-        console.error('Error fetching doctors:', error);
-        throw new Error(error.response?.data?.error || 'Failed to fetch doctor details.');
+        handleApiError(error, 'Failed to fetch doctors.');
+    }
+};
+
+export const getDoctorDetails = async (doctorId, lat, lon) => {
+    try {
+        const response = await axios.get(`${API_URL}/doctors/${doctorId}`, { params: { lat, lon } });
+        return response.data;
+    } catch (error) {
+        handleApiError(error, 'Failed to fetch doctor details.');
     }
 };
