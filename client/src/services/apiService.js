@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const handleApiError = (error, defaultMessage) => {
     console.error(`API Error: ${defaultMessage}`, error);

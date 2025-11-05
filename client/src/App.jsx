@@ -14,8 +14,10 @@ function App() {
     const [locationError, setLocationError] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [mobileView, setMobileView] = useState('list');
+    
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
+    
     const [searchParams, setSearchParams] = useSearchParams();
     const query = useMemo(() => searchParams.get('q'), [searchParams]);
     const type = useMemo(() => searchParams.get('type'), [searchParams]);
@@ -23,13 +25,14 @@ function App() {
     const selectedHospitalId = useMemo(() => searchParams.get('hospital'), [searchParams]);
     const navigatingToHospitalId = useMemo(() => searchParams.get('navigatingTo'), [searchParams]);
     const doctorIdToBook = useMemo(() => searchParams.get('bookDoctor'), [searchParams]);
-
+    
     const selectedHospital = useMemo(() => {
         const id = selectedHospitalId || navigatingToHospitalId;
         if (!id) return null;
         return searchResults.find(h => h.hospital_id === parseInt(id));
     }, [selectedHospitalId, navigatingToHospitalId, searchResults]);
 
+    // --- Effects ---
     useEffect(() => {
         navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -43,8 +46,10 @@ function App() {
             }
         );
     }, []);
+
+    // --- Data Fetching Effect ---
     useEffect(() => {
-        if (!userLocation) return;
+        if (!userLocation) return; 
 
         const fetchData = async () => {
             setIsLoading(true);
@@ -76,7 +81,9 @@ function App() {
         
         fetchData();
 
-    }, [userLocation, query, type, radius]); 
+    }, [userLocation, query, type, radius]);
+
+    // --- Handlers ---
     const handleSetSearch = (params) => {
         const currentRadius = searchParams.get('radiusKm');
         if (currentRadius) {
@@ -125,6 +132,7 @@ function App() {
         setSearchParams(newParams, { replace: true });
     };
 
+    // --- Render Logic ---
     const renderLeftPanel = () => {
         if (!userLocation) {
             return <Loader message={locationError || "Fetching your location..."} />;
@@ -145,7 +153,7 @@ function App() {
                     userLocation={userLocation}
                     onHospitalSelect={handleHospitalSelect}
                     onDoctorSelect={handleDoctorSelect}
-                    onSetSearch={handleSetSearch} 
+                    onSetSearch={handleSetSearch}
                     radius={radius}
                     setRadius={handleSetRadius}
                     searchResults={searchResults}
@@ -156,7 +164,7 @@ function App() {
         }
     };
 
-    
+    // Full-screen navigation view
     if (navigatingToHospitalId && selectedHospital && userLocation) {
         return (
             <NavigationView
@@ -170,6 +178,7 @@ function App() {
     // Main App View
     return (
         <div className="h-screen w-full bg-slate-100 flex flex-col md:flex-row overflow-hidden relative">
+            {/* --- Left Panel (List View) --- */}
             <div
                 className={`absolute md:relative w-full h-full md:w-[45%] lg:w-[35%] z-20 bg-white shadow-lg transform transition-transform duration-300 ease-in-out ${mobileView === "list" ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 `}
             >
@@ -178,19 +187,21 @@ function App() {
                 </div>
             </div>
             
+            {/* --- Right Panel (Map View) --- */}
             <div
-                className={`absolute md:relative w-full h-full md:w-[55%] lg:w-[65%] z-10 ${mobileView === "map" ? "block" : "hidden"} md:block`}
+                className={`absolute md:relative w-full h-full md:w-[55%] lg:w-[65%] z-10 transform transition-transform duration-300 ease-in-out ${mobileView === "map" ? "translate-x-0" : "translate-x-full"} md:translate-x-0`}
             >
                 <MapView
                     userLocation={userLocation}
                     hospitals={searchResults} 
                     hospital={selectedHospital}
                     onMarkerClick={handleHospitalSelect}
-                    searchType={type} 
+                    searchType={type}
                     radiusKm={radius}
                 />
             </div>
             
+            {/* Mobile View Toggle Button */}
             <div className="md:hidden absolute bottom-4 right-4 z-30 flex gap-2">
                 <button
                     onClick={() => setMobileView(mobileView === "list" ? "map" : "list")}
@@ -201,6 +212,7 @@ function App() {
                 </button>
             </div>
             
+            {/* Booking Modal */}
             {doctorIdToBook && userLocation && (
                 <DoctorBookingModal
                     doctorId={doctorIdToBook}

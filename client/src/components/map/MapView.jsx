@@ -192,9 +192,9 @@ function MapView({ userLocation, hospitals, hospital, onMarkerClick, searchType,
 
             pathOptions={{ 
 
-                color: '#3b82f6', // Blue
+                color: '#3b82f6',
 
-                fillColor: '#bfdbfe', // Light blue fill
+                fillColor: '#bfdbfe',
 
                 fillOpacity: 0.1,
 
