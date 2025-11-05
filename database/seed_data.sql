@@ -1,10 +1,8 @@
--- Clear existing data before seeding
 TRUNCATE TABLE doctor_availability, doctors, hospitals RESTART IDENTITY CASCADE;
 
 -- Insert hospitals in and around Paschim Medinipur
--- ST_SetSRID(ST_MakePoint(longitude, latitude), 4326) creates a spatial point.
+-- (No changes to this section)
 INSERT INTO hospitals (name, address, phone, pincode, website_link, geom) VALUES
--- Hospitals from user data
 ('Daspur Rural Hospital', 'Daspur PS', '03225-254251', '721211', NULL, ST_SetSRID(ST_MakePoint(87.72234,22.60668), 4326)),
 ('Ghatal Sub Divisional Hospital', 'Kuspata, Ghatal', '03225255064', '721212', NULL, ST_SetSRID(ST_MakePoint(87.73785,22.65696), 4326)),
 ('Keshiary Block Rural Hospital', 'Keshiary PS', '03229-252226', '721133', NULL, ST_SetSRID(ST_MakePoint(87.22830,22.12767), 4326)),
@@ -20,30 +18,56 @@ INSERT INTO hospitals (name, address, phone, pincode, website_link, geom) VALUES
 ('Debra Super speciality Hospital', 'State Highway 4, Debra', NULL, '721126', NULL, ST_SetSRID(ST_MakePoint(87.5619, 22.3828), 4326)),
 ('B.C. Roy Technology Hospital', 'IIT Kharagpur Campus, Kharagpur', NULL, '721302', NULL, ST_SetSRID(ST_MakePoint(87.30042,22.31671), 4326));
 
-
--- Insert expanded list of doctors
+-- Insert expanded list of doctors with STANDARDIZED specializations
 INSERT INTO doctors (name, specialization) VALUES
 -- Original Doctors
-('Dr. A. K. Sharma', 'Cardiology'), ('Dr. B. Dasgupta', 'Pediatrics'), ('Dr. C. Sen', 'Orthopedics'),
-('Dr. D. Ghosh', 'Cardiology'), ('Dr. E. Roy', 'General Medicine'), ('Dr. F. Khatun', 'Gynaecology'),
-('Dr. G. Mishra', 'Dermatology'), ('Dr. H. Singh', 'ENT'), ('Dr. I. Chatterjee', 'Neurology'),
-('Dr. J. Ali', 'Pulmonology'), ('Dr. K. Maity', 'Oncology'), ('Dr. L. Basu', 'Psychiatry'),
-('Dr. M. Paul', 'Nephrology'), ('Dr. N. Patra', 'General Physician'),
--- Doctors from B.C. Roy Technology Hospital
-('Dr. Hari Charan Ray', 'Gynae & Obsterics'), ('Dr. Parwati Patanik', 'Gynae & Obsterics'), ('Dr. Atis Basak', 'Medicine'),
-('Dr. Supriyo Pramanik', 'Medicine'), ('Dr. Sarbesh Sengupta', 'Psychiatrist'), ('Dr. Debabrata Majumder', 'Psychiatrist'),
-('Dr. Mahasweta Choudhuri', 'Paediatrics'), ('Dr. Archana Saha', 'Dermatologist'), ('Dr. Monajit Mandal', 'Surgeon'),
-('Dr. Roma Basumaiti', 'Ophthalmologist'), ('Dr. Deepshikha Singh', 'Ophthalmologist'), ('Dr. S Behera', 'Ophthalmologist'),
-('Dr. Sanjay Kr Gupta', 'ENT'), ('Dr. Sarvesh P Azgaonkar', 'ENT'), ('Dr. A.K. Maity', 'ENT'),
-('Dr. Aditi Bhattacharjee', 'Pathology'), ('Dr. Arijit Das', 'Orthopaedic'), ('Dr. Anjan Siotia', 'Cardiologist'),
-('Dr. Saubhik Kanjilal', 'Cardiologist'), ('Dr. Barnali Pal (Ghosh)', 'Dental'), ('Dr. Radha Prabhu K', 'Dental'),
-('Ms. Barnali Mukherjee', 'Optometrist'), ('Dr. Sunandan Basu', 'Neuro Surgeon'), ('Dr. Arindam Datta', 'Pulmonology'),
-('Dr. Arunava Nath', 'Homeopathy'), ('Dr. Balaram Sahoo', 'Public Health'), ('Dr. Moumita Maity', 'Oncologist');
+('Dr. A. K. Sharma', 'Cardiology'), 
+('Dr. B. Dasgupta', 'Pediatrics'), 
+('Dr. C. Sen', 'Orthopedics'),
+('Dr. D. Ghosh', 'Cardiology'), 
+('Dr. E. Roy', 'General Medicine'), 
+('Dr. F. Khatun', 'Gynaecology'),
+('Dr. G. Mishra', 'Dermatology'), 
+('Dr. H. Singh', 'ENT'), 
+('Dr. I. Chatterjee', 'Neurology'),
+('Dr. J. Ali', 'Pulmonology'), 
+('Dr. K. Maity', 'Oncology'), 
+('Dr. L. Basu', 'Psychiatry'),
+('Dr. M. Paul', 'Nephrology'), 
+('Dr. N. Patra', 'General Physician'),
+-- Doctors from B.C. Roy Technology Hospital (Standardized)
+('Dr. Hari Charan Ray', 'Gynaecology'),        -- Standardized from 'Gynae & Obsterics'
+('Dr. Parwati Patanik', 'Gynaecology'),        -- Standardized from 'Gynae & Obsterics'
+('Dr. Atis Basak', 'General Medicine'),        -- Standardized from 'Medicine'
+('Dr. Supriyo Pramanik', 'General Medicine'),    -- Standardized from 'Medicine'
+('Dr. Sarbesh Sengupta', 'Psychiatry'),        -- Standardized from 'Psychiatrist'
+('Dr. Debabrata Majumder', 'Psychiatry'),    -- Standardized from 'Psychiatrist'
+('Dr. Mahasweta Choudhuri', 'Pediatrics'),      -- Standardized from 'Paediatrics'
+('Dr. Archana Saha', 'Dermatology'),         -- Standardized from 'Dermatologist'
+('Dr. Monajit Mandal', 'Surgeon'),
+('Dr. Roma Basumaiti', 'Ophthalmology'),       -- Standardized from 'Ophthalmologist'
+('Dr. Deepshikha Singh', 'Ophthalmology'),     -- Standardized from 'Ophthalmologist'
+('Dr. S Behera', 'Ophthalmology'),           -- Standardized from 'Ophthalmologist'
+('Dr. Sanjay Kr Gupta', 'ENT'),
+('Dr. Sarvesh P Azgaonkar', 'ENT'),
+('Dr. A.K. Maity', 'ENT'),
+('Dr. Aditi Bhattacharjee', 'Pathology'),
+('Dr. Arijit Das', 'Orthopedics'),         -- Standardized from 'Orthopaedic'
+('Dr. Anjan Siotia', 'Cardiology'),          -- Standardized from 'Cardiologist'
+('Dr. Saubhik Kanjilal', 'Cardiology'),      -- Standardized from 'Cardiologist'
+('Dr. Barnali Pal (Ghosh)', 'Dental'),
+('Dr. Radha Prabhu K', 'Dental'),
+('Ms. Barnali Mukherjee', 'Optometry'),       -- Standardized from 'Optometrist'
+('Dr. Sunandan Basu', 'Neurosurgery'),       -- Standardized from 'Neuro Surgeon'
+('Dr. Arindam Datta', 'Pulmonology'),
+('Dr. Arunava Nath', 'Homeopathy'),
+('Dr. Balaram Sahoo', 'Public Health'),
+('Dr. Moumita Maity', 'Oncology');           -- Standardized from 'Oncologist'
 
 -- Link doctors to hospitals with their availability schedules (Expanded)
 -- ISO day of week: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
 INSERT INTO doctor_availability (doctor_id, hospital_id, day_of_week, start_time, end_time) VALUES
--- Schedules for original hospitals
+-- Original Schedules
 (1, 7, 1, '09:00:00', '13:00:00'), (1, 7, 3, '09:00:00', '13:00:00'),
 (2, 6, 2, '10:00:00', '14:00:00'), (2, 6, 4, '10:00:00', '14:00:00'),
 (3, 2, 5, '11:00:00', '15:00:00'),
@@ -58,46 +82,50 @@ INSERT INTO doctor_availability (doctor_id, hospital_id, day_of_week, start_time
 (12, 6, 1, '10:00:00', '13:00:00'),(12, 2, 4, '14:00:00', '17:00:00'),
 (13, 7, 6, '09:00:00', '13:00:00'),
 (14, 3, 1, '09:00:00', '17:00:00'),(14, 9, 3, '09:00:00', '17:00:00'),(14, 1, 5, '09:00:00', '17:00:00'),
-
--- NEW SCHEDULES FOR B.C. ROY TECHNOLOGY HOSPITAL (hospital_id = 14)
--- Gynae & Obsterics
-(15, 14, 1, '17:00:00', '19:00:00'), (15, 14, 5, '17:00:00', '19:00:00'), -- Dr. Hari Charan Ray
-(16, 14, 3, '17:00:00', '19:00:00'), (16, 14, 6, '17:00:00', '19:00:00'), -- Dr. Parwati Patanik
--- Medicine
-(17, 14, 1, '17:00:00', '19:00:00'), (17, 14, 3, '17:00:00', '19:00:00'), (17, 14, 5, '17:00:00', '19:00:00'), (17, 14, 6, '17:00:00', '19:00:00'), -- Dr. Atis Basak
-(18, 14, 6, '11:00:00', '13:00:00'), -- Dr. Supriyo Pramanik
--- Psychiatrist
-(19, 14, 1, '18:00:00', '20:00:00'), (19, 14, 3, '18:00:00', '20:00:00'), -- Dr. Sarbesh Sengupta
-(20, 14, 5, '18:00:00', '20:00:00'), -- Dr. Debabrata Majumder
--- Paediatrics
-(21, 14, 1, '16:00:00', '18:00:00'), (21, 14, 2, '16:00:00', '18:00:00'), (21, 14, 3, '16:00:00', '18:00:00'), (21, 14, 4, '08:30:00', '10:30:00'), (21, 14, 6, '09:00:00', '12:00:00'), -- Dr. Mahasweta Choudhuri
--- Dermatologist
-(22, 14, 1, '16:00:00', '18:00:00'), (22, 14, 4, '16:00:00', '19:00:00'), (22, 14, 6, '10:00:00', '13:00:00'), -- Dr. Archana Saha
--- Surgeon
-(23, 14, 2, '17:00:00', '19:00:00'), (23, 14, 4, '17:00:00', '19:00:00'), -- Dr. Monajit Mandal
--- Ophthalmologist
-(24, 14, 4, '16:00:00', '19:00:00'), (24, 14, 5, '17:00:00', '19:00:00'), -- Dr. Roma Basumaiti
-(25, 14, 2, '16:00:00', '19:00:00'), (25, 14, 3, '16:00:00', '19:00:00'), -- Dr. Deepshikha Singh
-(26, 14, 1, '16:00:00', '18:00:00'), (26, 14, 3, '10:00:00', '12:00:00'), -- Dr. S Behera
--- ENT
-(27, 14, 5, '10:00:00', '16:00:00'), -- Dr. Sanjay Kr Gupta
-(28, 14, 2, '16:00:00', '19:00:00'), -- Dr. Sarvesh P Azgaonkar
-(29, 14, 4, '16:00:00', '19:00:00'), -- Dr. A.K. Maity
--- Pathology
-(30, 14, 1, '18:00:00', '20:00:00'), (30, 14, 3, '18:00:00', '20:00:00'), (30, 14, 6, '18:00:00', '20:00:00'), -- Dr. Aditi Bhattacharjee
--- Orthopaedic
-(31, 14, 1, '17:30:00', '20:00:00'), -- Dr. Arijit Das
--- Cardiologist
-(32, 14, 4, '09:00:00', '15:00:00'), -- Dr. Anjan Siotia
--- Dental
-(34, 14, 1, '09:30:00', '11:30:00'), (34, 14, 3, '09:30:00', '11:30:00'), (34, 14, 4, '09:30:00', '11:30:00'), (34, 14, 2, '17:00:00', '19:00:00'), (34, 14, 5, '17:00:00', '19:00:00'), (34, 14, 6, '11:00:00', '13:00:00'), -- Dr. Barnali Pal (Ghosh)
-(35, 14, 2, '09:00:00', '11:00:00'), (35, 14, 4, '17:00:00', '19:00:00'), (35, 14, 5, '09:00:00', '11:00:00'), -- Dr. Radha Prabhu K
--- Optometrist
-(36, 14, 1, '09:00:00', '12:30:00'), (36, 14, 2, '09:00:00', '12:30:00'), (36, 14, 3, '09:00:00', '12:30:00'), (36, 14, 4, '09:00:00', '12:30:00'), (36, 14, 5, '09:00:00', '12:30:00'), (36, 14, 6, '09:00:00', '12:30:00'), -- Ms. Barnali Mukherjee (Morning)
-(36, 14, 1, '16:00:00', '19:00:00'), (36, 14, 2, '16:00:00', '19:00:00'), (36, 14, 3, '16:00:00', '19:00:00'), (36, 14, 4, '16:00:00', '19:00:00'), (36, 14, 5, '16:00:00', '19:00:00'), (36, 14, 6, '16:00:00', '19:00:00'), -- Ms. Barnali Mukherjee (Evening)
--- Pulmonology
-(38, 14, 3, '16:00:00', '19:00:00'), -- Dr. Arindam Datta
--- Homeopathy
-(39, 14, 3, '16:30:00', '18:30:00'), (39, 14, 6, '16:30:00', '18:30:00'), -- Dr. Arunava Nath
--- Public Health
-(40, 14, 1, '18:00:00', '20:00:00'), (40, 14, 3, '18:00:00', '20:00:00'), (40, 14, 4, '18:00:00', '20:00:00'), (40, 14, 5, '18:00:00', '20:00:00'); -- Dr. Balaram Sahoo
+-- B.C. ROY (hospital_id = 14) Schedules
+(15, 14, 1, '17:00:00', '19:00:00'), (15, 14, 5, '17:00:00', '19:00:00'),
+(16, 14, 3, '17:00:00', '19:00:00'), (16, 14, 6, '17:00:00', '19:00:00'),
+(17, 14, 1, '17:00:00', '19:00:00'), (17, 14, 3, '17:00:00', '19:00:00'), (17, 14, 5, '17:00:00', '19:00:00'), (17, 14, 6, '17:00:00', '19:00:00'),
+(18, 14, 6, '11:00:00', '13:00:00'),
+(19, 14, 1, '18:00:00', '20:00:00'), (19, 14, 3, '18:00:00', '20:00:00'),
+(20, 14, 5, '18:00:00', '20:00:00'),
+(21, 14, 1, '16:00:00', '18:00:00'), (21, 14, 2, '16:00:00', '18:00:00'), (21, 14, 3, '16:00:00', '18:00:00'), (21, 14, 4, '08:30:00', '10:30:00'), (21, 14, 6, '09:00:00', '12:00:00'),
+(22, 14, 1, '16:00:00', '18:00:00'), (22, 14, 4, '16:00:00', '19:00:00'), (22, 14, 6, '10:00:00', '13:00:00'),
+(23, 14, 2, '17:00:00', '19:00:00'), (23, 14, 4, '17:00:00', '19:00:00'),
+(24, 14, 4, '16:00:00', '19:00:00'), (24, 14, 5, '17:00:00', '19:00:00'),
+(25, 14, 2, '16:00:00', '19:00:00'), (25, 14, 3, '16:00:00', '19:00:00'),
+(26, 14, 1, '16:00:00', '18:00:00'), (26, 14, 3, '10:00:00', '12:00:00'),
+(27, 14, 5, '10:00:00', '16:00:00'),
+(28, 14, 2, '16:00:00', '19:00:00'),
+(29, 14, 4, '16:00:00', '19:00:00'),
+(30, 14, 1, '18:00:00', '20:00:00'), (30, 14, 3, '18:00:00', '20:00:00'), (30, 14, 6, '18:00:00', '20:00:00'),
+(31, 14, 1, '17:30:00', '20:00:00'),
+(32, 14, 4, '09:00:00', '15:00:00'),
+(34, 14, 1, '09:30:00', '11:30:00'), (34, 14, 3, '09:30:00', '11:30:00'), (34, 14, 4, '09:30:00', '11:30:00'), (34, 14, 2, '17:00:00', '19:00:00'), (34, 14, 5, '17:00:00', '19:00:00'), (34, 14, 6, '11:00:00', '13:00:00'),
+(35, 14, 2, '09:00:00', '11:00:00'), (35, 14, 4, '17:00:00', '19:00:00'), (35, 14, 5, '09:00:00', '11:00:00'),
+(36, 14, 1, '09:00:00', '12:30:00'), (36, 14, 2, '09:00:00', '12:30:00'), (36, 14, 3, '09:00:00', '12:30:00'), (36, 14, 4, '09:00:00', '12:30:00'), (36, 14, 5, '09:00:00', '12:30:00'), (36, 14, 6, '09:00:00', '12:30:00'),
+(36, 14, 1, '16:00:00', '19:00:00'), (36, 14, 2, '16:00:00', '19:00:00'), (36, 14, 3, '16:00:00', '19:00:00'), (36, 14, 4, '16:00:00', '19:00:00'), (36, 14, 5, '16:00:00', '19:00:00'), (36, 14, 6, '16:00:00', '19:00:00'),
+(38, 14, 3, '16:00:00', '19:00:00'), 
+(39, 14, 3, '16:30:00', '18:30:00'), (39, 14, 6, '16:30:00', '18:30:00'),
+(40, 14, 1, '18:00:00', '20:00:00'), (40, 14, 3, '18:00:00', '20:00:00'), (40, 14, 4, '18:00:00', '20:00:00'), (40, 14, 5, '18:00:00', '20:00:00'),
+-- Dr. A. K. Sharma (ID 1, Cardiology) at Kharagpur Sub Divisional (ID 6)
+(1, 6, 5, '10:00:00', '14:00:00'),
+-- Dr. C. Sen (ID 3, Orthopedics) at Debra (ID 13)
+(3, 13, 1, '09:00:00', '13:00:00'),
+-- Dr. G. Mishra (ID 7, Dermatology) at B.C. Roy (ID 14)
+(7, 14, 3, '16:00:00', '18:00:00'),
+-- Dr. I. Chatterjee (ID 9, Neurology) at Kharagpur Sub Divisional (ID 6)
+(9, 6, 4, '14:00:00', '17:00:00'),
+-- Dr. K. Maity (ID 11, Oncology) at B.C. Roy (ID 14)
+(11, 14, 5, '10:00:00', '13:00:00'),
+-- Dr. Atis Basak (ID 17, General Medicine) at Midnapore (ID 7)
+(17, 7, 2, '09:00:00', '13:00:00'),
+-- Dr. Mahasweta Choudhuri (ID 21, Pediatrics) at Kharagpur Sub Divisional (ID 6)
+(21, 6, 5, '10:00:00', '13:00:00'),
+-- Dr. Arijit Das (ID 31, Orthopedics) at Midnapore (ID 7)
+(31, 7, 3, '10:00:00', '14:00:00'),
+-- Dr. Anjan Siotia (ID 32, Cardiology) at Midnapore (ID 7)
+(32, 7, 1, '14:00:00', '17:00:00'),
+-- Dr. Saubhik Kanjilal (ID 33, Cardiology) at B.C. Roy (14) and Kharagpur Sub Div (6)
+(33, 14, 2, '09:00:00', '15:00:00'),
+(33, 6, 5, '09:00:00', '15:00:00');

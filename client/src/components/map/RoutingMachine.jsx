@@ -15,10 +15,10 @@ const RoutingMachine = ({ start, end, onRouteFound }) => {
             routeWhileDragging: false,
             // --- Customizations ---
             lineOptions: {
-                styles: [{ color: '#ec4899', weight: 6, opacity: 0.8 }], // Pink route
+                styles: [{ color: '#ec4899', weight: 6, opacity: 0.8 }], 
             },
-            show: true, // Hide the default instructions panel
-            addWaypoints: true,
+            show: false, //  default instructions panel
+            addWaypoints: false,
             fitSelectedRoutes: true,
             createMarker: () => null // Hide the default start/end markers
         }).addTo(map);

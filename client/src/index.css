@@ -23,3 +23,44 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* Add these styles to src/index.css */
+
+/* For the pulsing/blinking marker */
+.leaflet-pulsing-icon .ring {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #ec4899; /* Pink */
+  border: 2px solid white;
+  box-shadow: 0 0 5px rgba(0,0,0,0.3);
+  animation: pulsing 2s infinite;
+}
+
+/* Custom class for the permanent label on highlighted markers */
+.highlighted-label {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(236, 72, 153, 0.5) !important; /* Pink border */
+  border-width: 2px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2) !important;
+  padding: 8px 12px !important;
+}
+
+/* Custom shape and style for the user's location marker */
+.leaflet-user-icon {
+    border-radius: 50%;
+    border: 3px solid #3b82f6; /* Blue */
+    box-shadow: 0 0 0 3px white;
+    background-color: #3b82f6;
+}
+
+.hospital-label {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  font-weight: 600;
+  color: #1e293b !important; /* slate-800 */
+}

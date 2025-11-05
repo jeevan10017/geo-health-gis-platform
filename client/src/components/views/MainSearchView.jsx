@@ -1,97 +1,109 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getInitialHospitals, searchBySpecialty } from '../../services/apiService';
-import SearchBar from '../common/SearchBar';
-import HospitalCard from '../cards/HospitalCard';
-import SpecialtyResultCard from '../cards/SpecialtyResultCard';
-import Loader from '../common/Loader';
+import React, { useState, useEffect } from "react";
+import { useSearchParams } from 'react-router-dom';
+import SearchBar from "../common/SearchBar";
+import HospitalCard from "../cards/HospitalCard";
+import SpecialtyResultCard from "../cards/SpecialtyResultCard";
+import Loader from "../common/Loader";
+import { SlidersHorizontal } from "lucide-react";
 
-// Add onUpdateResults to props
-const MainSearchView = ({ userLocation, onHospitalSelect, onDoctorSelect, onUpdateResults }) => {
-    const [results, setResults] = useState([]);
-    const [searchType, setSearchType] = useState('initial');
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [searchTitle, setSearchTitle] = useState('Nearby Hospitals');
+// This component is now much simpler. It just receives props.
+const MainSearchView = ({
+  userLocation,
+  onHospitalSelect,
+  onDoctorSelect,
+  onSetSearch, // Function to update the URL params
+  radius,
+  setRadius,
+  searchResults, // Data is passed in
+  isLoading,     // Loading state is passed in
+  error          
+}) => {
 
-    const fetchInitialData = useCallback(async () => {
-        if (!userLocation) return;
-        setIsLoading(true);
-        setError('');
-        try {
-            const initialHospitals = await getInitialHospitals(userLocation[0], userLocation[1]);
-            setResults(initialHospitals);
-            onUpdateResults(initialHospitals); // <-- KEY FIX: Update parent state
-            setSearchType('initial');
-            setSearchTitle('Nearby Hospitals');
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [userLocation, onUpdateResults]);
+  const [searchParams] = useSearchParams();
+  const query = searchParams.get('q');
+  const type = searchParams.get('type');
 
-    useEffect(() => {
-        fetchInitialData();
-    }, [fetchInitialData]);
+  // This state is just for the title
+  const [searchTitle, setSearchTitle] = useState("Nearby Hospitals");
 
-    const handleSearch = async (suggestion) => {
-        setIsLoading(true);
-        setError('');
-        setResults([]);
-        onUpdateResults([]); // Clear parent state immediately
+  useEffect(() => {
+    if (type === 'specialty' && query) {
+      setSearchTitle(`Results for "${query}"`);
+    } else {
+      setSearchTitle("Nearby Hospitals");
+    }
+  }, [query, type]);
 
-        switch (suggestion.type) {
-            case 'specialty':
-                try {
-                    setSearchTitle(`Results for "${suggestion.primary_text}"`);
-                    const specialtyResults = await searchBySpecialty(suggestion.primary_text, userLocation[0], userLocation[1]);
-                    setResults(specialtyResults);
-                    onUpdateResults(specialtyResults); // <-- KEY FIX: Update parent state
-                    setSearchType('specialty');
-                } catch (err) {
-                    setError(err.message);
-                }
-                break;
-            case 'hospital':
-                onHospitalSelect(suggestion.id);
-                // We fetch fresh results to populate the map correctly for context
-                fetchInitialData();
-                break;
-            case 'doctor':
-                onDoctorSelect(suggestion.id);
-                 // We fetch fresh results to populate the map correctly for context
-                fetchInitialData();
-                break;
-            default:
-                await fetchInitialData();
-                break;
-        }
-        setIsLoading(false);
-    };
+  // handleSearch now just updates the URL. The effect in App.jsx will do the fetching.
+  const handleSearch = (suggestion) => {
+    if (suggestion.type === 'specialty') {
+      onSetSearch({ q: suggestion.primary_text, type: suggestion.type });
+    } else if (suggestion.type === 'hospital') {
+      onHospitalSelect(suggestion.id);
+    } else if (suggestion.type === 'doctor') {
+      onDoctorSelect(suggestion.id);
+    }
+  };
 
-    const renderResults = () => {
-        if (isLoading) return <Loader />;
-        if (error) return <p className="text-center text-red-600 p-4">{error}</p>;
-        if (results.length === 0) return <p className="text-center text-slate-500 p-4">No results found.</p>;
+  const renderResults = () => {
+    if (isLoading) return <Loader />;
+    if (error) return <p className="text-center text-red-600 p-4">{error}</p>;
+    if (searchResults.length === 0)
+      return (
+        <p className="text-center text-slate-500 p-4">No results found.</p>
+      );
 
-        return results.map(item => {
-            if (searchType === 'specialty') {
-                return <SpecialtyResultCard key={item.hospital_id} hospital={item} onClick={onHospitalSelect} />;
-            }
-            return <HospitalCard key={item.hospital_id} hospital={item} onClick={onHospitalSelect} />;
-        });
-    };
-    
-    return (
-        <div className="p-4 space-y-4">
-            <h1 className="text-2xl font-bold text-slate-800">Find a Doctor</h1>
-            <SearchBar onSearch={handleSearch} userLocation={userLocation} />
-            <h2 className="text-lg font-semibold text-slate-700 pt-2">{searchTitle}</h2>
-            <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
-                {renderResults()}
-            </div>
-        </div>
-    );
+    return searchResults.map((item) => {
+      if (type === "specialty") {
+        return (
+          <SpecialtyResultCard
+            key={item.hospital_id}
+            hospital={item}
+            onClick={onHospitalSelect}
+          />
+        );
+      }
+      return (
+        <HospitalCard
+          key={item.hospital_id}
+          hospital={item}
+          onClick={onHospitalSelect}
+        />
+      );
+    });
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <h1 className="text-2xl font-bold text-slate-800">
+        Find a Doctor
+      </h1>
+      <SearchBar onSearch={handleSearch} userLocation={userLocation} />
+
+      {/* --- GEOFENCE DROPDOWN --- */}
+      <div className="relative">
+        <SlidersHorizontal className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+        <select 
+          value={radius} 
+          onChange={(e) => setRadius(e.target.value)}
+          className="w-full rounded-md border border-slate-300 pl-10 pr-4 py-2 text-base focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+        >
+          <option value="">All Hospitals</option>
+          <option value="5">Within 5 km</option>
+          <option value="10">Within 10 km</option>
+          <option value="25">Within 25 km</option>
+        </select>
+      </div>
+      {/* --- END NEW DROPDOWN --- */}
+
+      <h2 className="text-lg font-semibold text-slate-700 pt-2">
+        {searchTitle}
+      </h2>
+      <div className="space-y-3 max-h-[calc(100vh-270px)] overflow-y-auto pr-2">
+        {renderResults()}
+      </div>
+    </div>
+  );
 };
 
 export default MainSearchView;

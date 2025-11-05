@@ -1,5 +1,5 @@
 import React from 'react';
-import { Car, MapPin } from 'lucide-react'; // Assuming lucide has UserMd or similar
+import { Car, MapPin } from 'lucide-react'; 
 
 const HospitalCard = ({ hospital, onClick }) => (
     <div

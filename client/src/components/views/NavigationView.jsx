@@ -8,7 +8,6 @@ const NavigationView = ({ userLocation, hospital, onClose }) => {
 
     return (
         <div className="fixed inset-0 bg-white z-50 flex flex-col md:flex-row-reverse">
-            {/* --- Instructions Panel --- */}
             <div className="w-full md:w-96 bg-white shadow-lg z-10 p-4 flex flex-col h-1/2 md:h-full">
                 <div className="flex-shrink-0 flex justify-between items-center border-b pb-3 mb-3">
                     <div>

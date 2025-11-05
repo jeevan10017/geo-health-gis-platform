@@ -6,10 +6,7 @@
  */
 exports.formatToGeoJSON = (rows) => {
   const features = rows.map(row => {
-    // The geometry is already a stringified JSON from ST_AsGeoJSON
     const geometry = JSON.parse(row.geometry);
-    
-    // Separate properties from the geometry
     const properties = { ...row };
     delete properties.geometry;
 

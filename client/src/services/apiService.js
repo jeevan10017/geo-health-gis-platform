@@ -7,12 +7,14 @@ const handleApiError = (error, defaultMessage) => {
     throw new Error(error.response?.data?.error || defaultMessage);
 };
 
-export const getInitialHospitals = async (lat, lon) => {
+export const getInitialHospitals = async (lat, lon, radiusKm) => {
     try {
-        const response = await axios.get(`${API_URL}/initial-hospitals`, { params: { lat, lon } });
-        return response.data;
+        const params = { lat, lon, radiusKm };
+        Object.keys(params).forEach(key => !params[key] && delete params[key]);
+       const response = await axios.get(`${API_URL}/initial-hospitals`, { params });
+      return response.data;
     } catch (error) {
-        handleApiError(error, 'Failed to fetch nearby hospitals.');
+     handleApiError(error, 'Failed to fetch nearby hospitals.');
     }
 };
 
@@ -28,16 +30,15 @@ export const fetchAutocompleteSuggestions = async (query, lat, lon) => {
     }
 };
 
-export const searchBySpecialty = async (specialty, lat, lon, date) => {
-    try {
-        const params = { q: specialty, lat, lon, date };
-        // Remove empty params
+export const searchBySpecialty = async (specialty, lat, lon, date, radiusKm) => {
+     try {
+         const params = { q: specialty, lat, lon, date, radiusKm };
         Object.keys(params).forEach(key => !params[key] && delete params[key]);
-        const response = await axios.get(`${API_URL}/search`, { params });
-        return response.data;
-    } catch (error) {
-        handleApiError(error, 'Failed to perform specialty search.');
-    }
+         const response = await axios.get(`${API_URL}/search`, { params });
+         return response.data;
+     } catch (error) {
+      handleApiError(error, 'Failed to perform specialty search.');
+   }
 };
 
 export const getHospitalDetails = async (hospitalId) => {
@@ -52,11 +53,15 @@ export const getHospitalDetails = async (hospitalId) => {
 export const getDoctorsForHospital = async (hospitalId, date, query = '') => {
     try {
         const response = await axios.get(`${API_URL}/hospitals/${hospitalId}/doctors`, {
-            params: { date, q: query }
+            params: { 
+              date: date || '',
+              q: query 
+            }
         });
-        return response.data;
+        return response.data; 
     } catch (error) {
-        handleApiError(error, 'Failed to fetch doctors.');
+        console.error('Error fetching doctors:', error);
+        throw new Error(error.response?.data?.error || 'Failed to fetch doctor details.');
     }
 };
 
