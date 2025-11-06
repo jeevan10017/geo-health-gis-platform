@@ -51,7 +51,7 @@ const SearchBar = ({ onSearch, userLocation }) => {
     };
 
     return (
-        <div className="relative" ref={wrapperRef}>
+        <div className="relative z-50" ref={wrapperRef}>
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <input
