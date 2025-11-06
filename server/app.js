@@ -1,5 +1,3 @@
-// server/app.js
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -9,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 const allowedOrigins = [
-  'https://geo-health-medinapur.vercel.app',=
+  'https://geo-health-medinapur.vercel.app',
   'http://localhost:5173'
 ];
 
