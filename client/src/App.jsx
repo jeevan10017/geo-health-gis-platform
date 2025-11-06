@@ -50,6 +50,21 @@ function App() {
     // --- Data Fetching Effect ---
     useEffect(() => {
         if (!userLocation) return; 
+        
+        // --- FIX #1 ---
+        // If a hospital is selected, we don't need to fetch the main list.
+        // This stops the list from re-fetching when we don't want it to.
+        if (selectedHospitalId) {
+            // If searchResults is empty (from a direct page load),
+            // fetch the initial hospitals so the map/nav can find the hospital.
+            if (searchResults.length === 0) {
+                 getInitialHospitals(userLocation[0], userLocation[1], radius)
+                    .then(setSearchResults)
+                    .catch(setError);
+            }
+            return; 
+        }
+        // --- END FIX #1 ---
 
         const fetchData = async () => {
             setIsLoading(true);
@@ -81,7 +96,8 @@ function App() {
         
         fetchData();
 
-    }, [userLocation, query, type, radius]);
+    // The dependency array now correctly includes selectedHospitalId
+    }, [userLocation, query, type, radius, selectedHospitalId, searchResults.length]); 
 
     // --- Handlers ---
     const handleSetSearch = (params) => {
@@ -119,10 +135,11 @@ function App() {
     };
 
     const handleBackToSearch = () => {
-        const newParams = { ...Object.fromEntries(searchParams) };
-        delete newParams.hospital;
-        delete newParams.bookDoctor;
-        delete newParams.navigatingTo;
+        const newParams = {}; // Start with a fresh object
+        const currentRadius = searchParams.get('radiusKm');
+        if (currentRadius) {
+            newParams.radiusKm = currentRadius; // Preserve only the radius
+        }
         setSearchParams(newParams, { replace: true });
     };
 
@@ -132,7 +149,6 @@ function App() {
         setSearchParams(newParams, { replace: true });
     };
 
-    // --- Render Logic ---
     const renderLeftPanel = () => {
         if (!userLocation) {
             return <Loader message={locationError || "Fetching your location..."} />;
@@ -164,7 +180,6 @@ function App() {
         }
     };
 
-    // Full-screen navigation view
     if (navigatingToHospitalId && selectedHospital && userLocation) {
         return (
             <NavigationView
@@ -175,7 +190,6 @@ function App() {
         );
     }
 
-    // Main App View
     return (
        <div className="h-[100dvh] w-full bg-slate-100 flex flex-col md:flex-row overflow-hidden relative">
             {/* --- Left Panel (List View) --- */}
@@ -201,7 +215,7 @@ function App() {
                 />
             </div>
             
-            {/* Mobile View Toggle Button */}
+            {/* --- Mobile View Toggle Button --- */}
             <div className="md:hidden absolute bottom-4 right-4 z-30 flex gap-2">
                 <button
                     onClick={() => setMobileView(mobileView === "list" ? "map" : "list")}
@@ -212,7 +226,7 @@ function App() {
                 </button>
             </div>
             
-            {/* Booking Modal */}
+            {/* --- Booking Modal --- */}
             {doctorIdToBook && userLocation && (
                 <DoctorBookingModal
                     doctorId={doctorIdToBook}
