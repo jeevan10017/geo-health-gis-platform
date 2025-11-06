@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 4000;
 
 
 const allowedOrigins = [
-  'https://geo-health-backend.vercel.app',
+  'https://geo-health-medinapur.vercel.app',
   'http://localhost:5173'
 ];
 
