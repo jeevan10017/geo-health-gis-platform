@@ -10,6 +10,7 @@ router.get('/search', healthController.advancedSearch);
 router.get('/hospitals/:id', healthController.getHospitalById);
 router.get('/hospitals/:id/doctors', healthController.getDoctorsByHospital);
 router.get('/doctors/:id', healthController.getDoctorById);
+router.get('/route', healthController.getRoute);
 
 
 module.exports = router;

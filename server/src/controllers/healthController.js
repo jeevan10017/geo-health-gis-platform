@@ -379,3 +379,59 @@ exports.getDoctorById = async (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };
+
+exports.getRoute = async (req, res) => {
+    const { fromLat, fromLon, toLat, toLon } = req.query;
+
+    if (!fromLat || !fromLon || !toLat || !toLon) {
+        return res.status(400).json({ error: 'All four coordinates (fromLat, fromLon, toLat, toLon) are required.' });
+    }
+
+    // 1. Create PostGIS points from the coordinates
+    const startPoint = `ST_SetSRID(ST_MakePoint(${parseFloat(fromLon)}, ${parseFloat(fromLat)}), 4326)`;
+    const endPoint = `ST_SetSRID(ST_MakePoint(${parseFloat(toLon)}, ${parseFloat(toLat)}), 4326)`;
+
+    try {
+        const query = `
+            WITH
+            -- Step 1: Find the nearest road network node to the start and end points
+            nodes AS (
+                SELECT
+                    (SELECT id FROM ways_vertices_pgr ORDER BY the_geom <-> ${startPoint} LIMIT 1) AS start_node,
+                    (SELECT id FROM ways_vertices_pgr ORDER BY the_geom <-> ${endPoint} LIMIT 1) AS end_node
+            ),
+            -- Step 2: Run pgr_dijkstra to find the shortest path (list of road segment IDs)
+            route AS (
+                SELECT * FROM pgr_dijkstra(
+                    'SELECT gid AS id, source, target, length_m AS cost FROM ways',
+                    (SELECT start_node FROM nodes),
+                    (SELECT end_node FROM nodes),
+                    false
+                )
+            ),
+            -- Step 3: Join the path results with the 'ways' table to get the actual road geometries
+            route_geom AS (
+                SELECT route.seq, w.the_geom
+                FROM route
+                JOIN ways AS w ON route.edge = w.gid
+                ORDER BY route.seq
+            )
+            -- Step 4: Combine all road geometries into one single line and convert it to GeoJSON
+            SELECT ST_AsGeoJSON(ST_Collect(the_geom)) AS route_geometry
+            FROM route_geom;
+        `;
+
+        const { rows } = await db.query(query);
+
+        if (!rows[0] || !rows[0].route_geometry) {
+            return res.status(404).json({ error: 'Route not found.' });
+        }
+        
+        // Parse the GeoJSON string from the DB and send it as a JSON object
+        res.status(200).json(JSON.parse(rows[0].route_geometry));
+
+    } catch (err) {
+        console.error('Error fetching route:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};

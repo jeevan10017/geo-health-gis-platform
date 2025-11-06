@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 const handleApiError = (error, defaultMessage) => {
     console.error(`API Error: ${defaultMessage}`, error);
@@ -71,5 +71,15 @@ export const getDoctorDetails = async (doctorId, lat, lon) => {
         return response.data;
     } catch (error) {
         handleApiError(error, 'Failed to fetch doctor details.');
+    }
+};
+
+export const getRouteGeometry = async (fromLat, fromLon, toLat, toLon) => {
+    try {
+        const params = { fromLat, fromLon, toLat, toLon };
+        const response = await axios.get(`${API_URL}/route`, { params });
+        return response.data; 
+    } catch (error) {
+        handleApiError(error, 'Failed to fetch route geometry.');
     }
 };

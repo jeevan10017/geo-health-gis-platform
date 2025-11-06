@@ -18,10 +18,14 @@ const HighlightedMarker = ({ hospital, onClick }) => {
   });
 
   // Prepare the content for the label
-  const labelContent = `
+const labelContent = `
     <div class="font-sans">
       <div class="font-bold text-base text-slate-800 mb-1">${hospital.hospital_name}</div>
-      <div class="text-xs text-slate-600 space-y-0.5">
+      <div class="text-sm text-slate-600 space-y-0.5">
+        <div>~ ${hospital.travel_time_minutes} min drive</div>
+        <div>(${(hospital.route_distance_meters / 1000).toFixed(1)} km)</div>
+      </div>
+      <div class="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200 space-y-0.5">
         ${hospital.matching_doctors.map(name => `<div>- ${name}</div>`).join('')}
       </div>
     </div>
