@@ -111,8 +111,7 @@ const HospitalDetailView = ({
         <h3 className="font-bold text-slate-800">Available Doctors</h3>
 
         <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:gap-4">
-          {/* Search Input — 75% width on large, full width on mobile */}
-          <div className="relative w-full sm:w-3/4">
+          <div className="relative w-full sm:w-3/5">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
             <input
               type="text"
@@ -124,7 +123,7 @@ const HospitalDetailView = ({
           </div>
 
           {/* Date Picker — 25% width on large, full width on mobile */}
-          <div className="relative w-full sm:w-1/4 mt-3 sm:mt-0">
+          <div className="relative w-full sm:w-2/5 mt-3 sm:mt-0">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 z-10" />
             <DatePicker
               selected={filterDate}
