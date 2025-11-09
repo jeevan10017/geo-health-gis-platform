@@ -88,7 +88,15 @@ const MainSearchView = ({
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Find a Doctor</h1>
+      <div className="flex items-center gap-3">
+        <img
+          src="/geoHealthLogo.png"            
+          alt="App logo"
+          className="h-8 w-8 sm:h-10 sm:w-10 object-contain"
+          loading="lazy"
+        />
+        <h1 className="text-2xl font-bold text-slate-800">Find a Doctor</h1>
+      </div>
 
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <div className="w-full sm:w-[70%]">
@@ -111,11 +119,11 @@ const MainSearchView = ({
                   paddingLeft: "0.25rem",
                   boxShadow: "none",
                   minHeight: "40px",
-                  fontSize: window.innerWidth < 640 ? "12px" : "14px", // smaller on mobile
+                  fontSize: window.innerWidth < 640 ? "12px" : "14px",
                 }),
                 option: (base) => ({
                   ...base,
-                  fontSize: window.innerWidth < 640 ? "12px" : "14px", // smaller dropdown text
+                  fontSize: window.innerWidth < 640 ? "12px" : "14px",
                   padding: "8px 10px",
                 }),
                 singleValue: (base) => ({
