@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom'; 
 import { Map, List, Database, MapPin } from 'lucide-react';
 import MapView from './components/map/MapView';
+import { Analytics } from "@vercel/analytics/react";
 import MainSearchView from './components/views/MainSearchView';
 import HospitalDetailView from './components/views/HospitalDetailView';
 import DoctorBookingModal from './components/modals/DoctorBookingModal';
@@ -184,6 +185,7 @@ function App() {
     }
 return (
        <div className="h-[100dvh] w-full bg-slate-100 flex flex-col md:flex-row overflow-hidden relative">
+        <Analytics />
             {/* --- Left Panel (List View) --- */}
             <div
                 className={`absolute md:relative w-full h-full md:w-[45%] lg:w-[35%] z-20 bg-white shadow-lg transform transition-transform duration-300 ease-in-out ${mobileView === "list" ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 `}
