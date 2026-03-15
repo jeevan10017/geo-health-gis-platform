@@ -1,11 +1,8 @@
-// src/components/cards/DoctorCard.jsx
-
 import React, { useMemo } from 'react';
 import { Play } from 'lucide-react';
 
 const dayMap = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' };
 
-// Add `hospital` and `onStartNavigation` props back in
 const DoctorCard = ({ doctor, hospital, onBook, onStartNavigation }) => {
 
     // Logic for the "Start" button
@@ -15,7 +12,6 @@ const DoctorCard = ({ doctor, hospital, onBook, onStartNavigation }) => {
         const now = new Date();
         const currentDay = now.getDay() === 0 ? 7 : now.getDay();
         
-        // Check if the doctor's schedule for today (from `available_days`) matches the current day
         const scheduleToday = doctor.available_days?.includes(currentDay);
         if (!scheduleToday) return { isAvailableNow: false };
 
@@ -53,11 +49,7 @@ const DoctorCard = ({ doctor, hospital, onBook, onStartNavigation }) => {
                     </div>
                 </div>
                 <button
-                    // --- THIS IS THE FIX ---
-                    // Was: onClick={() => onBook(doctor)}
-                    // Now:
                     onClick={() => onBook(doctor.doctor_id)}
-                    // -----------------------
                     className="bg-indigo-600 text-white font-semibold px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors flex-shrink-0"
                 >
                     Book

@@ -18,6 +18,22 @@ INSERT INTO hospitals (name, address, phone, pincode, website_link, geom) VALUES
 ('Debra Super speciality Hospital', 'State Highway 4, Debra', NULL, '721126', NULL, ST_SetSRID(ST_MakePoint(87.5619, 22.3828), 4326)),
 ('B.C. Roy Technology Hospital', 'IIT Kharagpur Campus, Kharagpur', NULL, '721302', NULL, ST_SetSRID(ST_MakePoint(87.30042,22.31671), 4326));
 
+
+INSERT INTO hospital_metrics VALUES
+(1, 50, 12, 4, 2, 1, TRUE, 30, 8, 1, 3.8, FALSE, FALSE, TRUE, FALSE, TRUE, TRUE),
+(2, 80, 20, 6, 3, 2, TRUE, 40, 15, 1, 4.1, TRUE, FALSE, TRUE, TRUE, TRUE, TRUE),
+(3, 40, 8, 2, 1, 1, FALSE, 35, 10, 1, 3.6, FALSE, FALSE, TRUE, FALSE, TRUE, TRUE),
+(4, 45, 10, 2, 1, 1, FALSE, 50, 12, 1, 3.7, FALSE, FALSE, TRUE, FALSE, TRUE, TRUE),
+(5, 60, 18, 4, 2, 2, TRUE, 45, 18, 1, 3.9, TRUE, FALSE, TRUE, FALSE, TRUE, TRUE),
+(6, 150, 35, 12, 8, 2, TRUE, 60, 30, 2, 4.3, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+(7, 500, 120, 50, 25, 3, TRUE, 70, 60, 2, 4.6, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+(8, 35, 7, 2, 1, 1, FALSE, 40, 9, 1, 3.5, FALSE, FALSE, TRUE, FALSE, TRUE, FALSE),
+(9, 40, 10, 3, 1, 1, FALSE, 45, 11, 1, 3.6, FALSE, FALSE, TRUE, FALSE, TRUE, FALSE),
+(10, 55, 14, 4, 2, 2, TRUE, 35, 12, 1, 3.9, TRUE, FALSE, TRUE, FALSE, TRUE, TRUE),
+(11, 45, 9, 2, 1, 1, FALSE, 40, 10, 1, 3.7, FALSE, FALSE, TRUE, FALSE, TRUE, TRUE),
+(12, 200, 50, 15, 6, 3, TRUE, 55, 40, 2, 4.4, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+(13, 120, 30, 10, 4, 2, TRUE, 50, 25, 2, 4.2, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+(14, 80, 20, 5, 3, 2, TRUE, 25, 10, 2, 4.5, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE);
 -- Insert expanded list of doctors with STANDARDIZED specializations
 INSERT INTO doctors (name, specialization) VALUES
 -- Original Doctors
@@ -47,7 +63,7 @@ INSERT INTO doctors (name, specialization) VALUES
 ('Dr. Monajit Mandal', 'Surgeon'),
 ('Dr. Roma Basumaiti', 'Ophthalmology'),       -- Standardized from 'Ophthalmologist'
 ('Dr. Deepshikha Singh', 'Ophthalmology'),     -- Standardized from 'Ophthalmologist'
-('Dr. S Behera', 'Ophthalmology'),           -- Standardized from 'Ophthalmologist'
+('Dr. S Behera', 'Ophthalmology'),          
 ('Dr. Sanjay Kr Gupta', 'ENT'),
 ('Dr. Sarvesh P Azgaonkar', 'ENT'),
 ('Dr. A.K. Maity', 'ENT'),

@@ -5,62 +5,111 @@
 @tailwind utilities;
 
 body {
-  /* font-family: 'Inter', sans-serif; */
   font-family: "Funnel Display", sans-serif;
 }
 
-/* Custom scrollbar for a cleaner look */
-::-webkit-scrollbar {
-  width: 6px;
+/* ── Global thin scrollbar ─────────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;                   /* Firefox */
+  scrollbar-color: #d1d5db transparent;    /* Firefox: thumb track */
 }
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
+
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
 }
-::-webkit-scrollbar-thumb {
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
   background: #d1d5db;
-  border-radius: 6px;
+  border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover {
+
+*::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
 
-/* Add these styles to src/index.css */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
-/* For the pulsing/blinking marker */
+/* ── scrollbar-thin utility (for horizontal pill rows) ──────────────────────── */
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 3px;
+  width:  3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+
+/* ── Pulsing marker animation ───────────────────────────────────────────────── */
+
 .leaflet-pulsing-icon .ring {
   position: relative;
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background-color: #ec4899; /* Pink */
+  background-color: #ec4899;
   border: 2px solid white;
   box-shadow: 0 0 5px rgba(0,0,0,0.3);
   animation: pulsing 2s infinite;
 }
 
-/* Custom class for the permanent label on highlighted markers */
+@keyframes pulsing {
+  0%   { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.7); }
+  70%  { transform: scale(1);   box-shadow: 0 0 0 10px rgba(236, 72, 153, 0); }
+  100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(236, 72, 153, 0); }
+}
+
+/* ── Highlighted Leaflet labels ─────────────────────────────────────────────── */
+
 .highlighted-label {
   background-color: rgba(255, 255, 255, 0.9) !important;
-  border-color: rgba(236, 72, 153, 0.5) !important; /* Pink border */
+  border-color: rgba(236, 72, 153, 0.5) !important;
   border-width: 2px !important;
   border-radius: 8px !important;
   box-shadow: 0 2px 10px rgba(0,0,0,0.2) !important;
   padding: 8px 12px !important;
 }
 
-/* Custom shape and style for the user's location marker */
 .leaflet-user-icon {
-    border-radius: 50%;
-    border: 3px solid #3b82f6; /* Blue */
-    box-shadow: 0 0 0 3px white;
-    background-color: #3b82f6;
+  border-radius: 50%;
+  border: 3px solid #3b82f6;
+  box-shadow: 0 0 0 3px white;
+  background-color: #3b82f6;
 }
 
 .hospital-label {
-  background-color: rgba(255, 255, 255, 0.8) !important;
-  border-color: rgba(0, 0, 0, 0.2) !important;
-  border-radius: 4px !important;
-  box-shadow: none !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.12) !important;
   font-weight: 600;
-  color: #1e293b !important; /* slate-800 */
+  color: #1e293b !important;
+}
+
+/* ── Drag handle cursor ──────────────────────────────────────────────────────── */
+
+.resize-handle {
+  cursor: col-resize;
 }
