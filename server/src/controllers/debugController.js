@@ -1,41 +1,40 @@
 
-
 const db = require('../db');
 
-/**
- * GET /api/debug/network-check?lat=&lon=
- *
- * Checks every layer the hospitals query depends on and returns a JSON
- * report so you can see exactly which layer is broken.
- */
+// ─────────────────────────────────────────────
+//  GET /api/debug/network-check?lat=&lon=
+// ─────────────────────────────────────────────
+
 exports.networkCheck = async (req, res) => {
     const { lat, lon } = req.query;
     const report = {};
 
     try {
-        // 1 — Are there any hospitals at all?
         const hCount = await db.query('SELECT COUNT(*) AS n FROM hospitals');
         report.hospitals_total = parseInt(hCount.rows[0].n);
 
-        // 2 — Are there any road-network nodes?
-        const vCount = await db.query(
-            'SELECT COUNT(*) AS n FROM ways_vertices_pgr'
-        );
+        const vCount = await db.query('SELECT COUNT(*) AS n FROM ways_vertices_pgr');
         report.road_nodes_total = parseInt(vCount.rows[0].n);
 
-        // 3 — Are there any road edges?
         const wCount = await db.query('SELECT COUNT(*) AS n FROM ways');
         report.road_edges_total = parseInt(wCount.rows[0].n);
 
-        // 4 — Are there any hospital_metrics rows?
-        const mCount = await db.query(
-            'SELECT COUNT(*) AS n FROM hospital_metrics'
-        );
+        const mCount = await db.query('SELECT COUNT(*) AS n FROM hospital_metrics');
         report.hospital_metrics_total = parseInt(mCount.rows[0].n);
 
-        // 5 — Can we find the nearest node to the user's location?
+        // Check cost_s column
+        try {
+            const cs = await db.query(
+                'SELECT COUNT(*) AS n FROM ways WHERE cost_s IS NOT NULL AND cost_s > 0'
+            );
+            report.edges_with_time_cost = parseInt(cs.rows[0].n);
+        } catch {
+            report.edges_with_time_cost = 'column missing — run migration_time_routing.sql';
+        }
+
         if (lat && lon) {
             const userPoint = `ST_SetSRID(ST_MakePoint(${parseFloat(lon)}, ${parseFloat(lat)}), 4326)`;
+
             const nearestNode = await db.query(
                 `SELECT id, ST_DistanceSphere(the_geom, ${userPoint}) AS dist_m
                  FROM ways_vertices_pgr
@@ -44,10 +43,10 @@ exports.networkCheck = async (req, res) => {
             );
             report.nearest_node_to_user = nearestNode.rows[0] ?? null;
 
-            // 6 — Nearest node to first hospital
             const firstHosp = await db.query(
                 'SELECT hospital_id, name, geom FROM hospitals LIMIT 1'
             );
+
             if (firstHosp.rows.length > 0) {
                 const h = firstHosp.rows[0];
                 report.first_hospital = { hospital_id: h.hospital_id, name: h.name };
@@ -59,7 +58,6 @@ exports.networkCheck = async (req, res) => {
                 );
                 report.nearest_node_to_first_hospital = nearestHospNode.rows[0] ?? null;
 
-                // 7 — Try one Dijkstra call between those two nodes
                 if (report.nearest_node_to_user && report.nearest_node_to_first_hospital) {
                     try {
                         const dijkstra = await db.query(
@@ -79,12 +77,9 @@ exports.networkCheck = async (req, res) => {
             }
         }
 
-        // 8 — Sample the first 3 hospital rows (straight-line, no routing)
         const sample = await db.query(
-            `SELECT hospital_id, name,
-                    ST_X(geom) AS lon, ST_Y(geom) AS lat
-             FROM hospitals
-             LIMIT 3`
+            `SELECT hospital_id, name, ST_X(geom) AS lon, ST_Y(geom) AS lat
+             FROM hospitals LIMIT 3`
         );
         report.sample_hospitals = sample.rows;
 
@@ -93,4 +88,60 @@ exports.networkCheck = async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message, partial_report: report });
     }
+};
+
+
+// ─────────────────────────────────────────────
+//  GET /api/debug/ors-test
+//  Quick connectivity test for ORS API key
+// ─────────────────────────────────────────────
+
+exports.orsTest = async (req, res) => {
+    const axios  = require('axios');
+    const apiKey = process.env.ORS_API_KEY;
+
+    const report = {
+        key_present: !!apiKey,
+        key_prefix:  apiKey ? apiKey.slice(0, 8) + '...' : null,
+        node_version: process.version,
+    };
+
+    if (!apiKey) {
+        return res.status(200).json({
+            ...report,
+            status: 'FAIL',
+            reason: 'ORS_API_KEY not found in .env — add ORS_API_KEY=your_key and restart server',
+        });
+    }
+
+    try {
+        // Test: KGP → Midnapore
+        const orsRes = await axios.post(
+            'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
+            { coordinates: [[87.3147, 22.3276], [87.3224, 22.4246]] },
+            {
+                headers: {
+                    'Authorization': apiKey,
+                    'Content-Type':  'application/json',
+                },
+                timeout: 10000,
+            }
+        );
+
+        const feat = orsRes.data.features?.[0];
+        report.status          = 'OK';
+        report.http_status     = orsRes.status;
+        report.test_distance_m = Math.round(feat?.properties?.summary?.distance ?? 0);
+        report.test_time_min   = Math.round((feat?.properties?.summary?.duration ?? 0) / 60);
+        report.has_steps       = (feat?.properties?.segments?.[0]?.steps?.length ?? 0) > 0;
+
+    } catch (err) {
+        report.status     = 'FAIL';
+        report.http_status = err.response?.status;
+        report.reason      = err.response?.data?.error?.message
+                          ?? err.response?.data?.message
+                          ?? err.message;
+    }
+
+    res.status(200).json(report);
 };

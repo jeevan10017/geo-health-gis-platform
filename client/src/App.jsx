@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MapIcon, List } from 'lucide-react';
+import { ChevronUp, ChevronDown, MapIcon } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
 
 import MapView            from './components/map/MapView';
@@ -17,12 +17,19 @@ import {
     getHospitalsByDecisionMode,
     getEmergencyHospitals,
     getHospitalLoadStatus,
+    getCurrentlyAvailable,
 } from './services/apiService';
 
-// ─── Sidebar width constraints (desktop, px) ─────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 720;
-const SIDEBAR_DEFAULT_PCT = 0.35; // 35% of window width
+const SIDEBAR_DEFAULT_PCT = 0.35;
+
+// Mobile drawer snap positions (% of viewport height for the LIST panel)
+const SNAP_FULL   = 92;  // list fills screen, tiny map peek at bottom
+const SNAP_HALF   = 52;  // 50/50 split
+const SNAP_PEEK   = 14;  // map mostly visible, list peeking at bottom
 
 function App() {
     // ─── Location ──────────────────────────────────────────────────────────
@@ -31,20 +38,23 @@ function App() {
 
     // ─── Results / UI ───────────────────────────────────────────────────────
     const [searchResults,  setSearchResults]  = useState([]);
-    const [mobileView,     setMobileView]     = useState('list');
-    const [routingMode,    setRoutingMode]    = useState('osrm');
+    const [routingMode,    setRoutingMode]    = useState('pgrouting');
     const [isLoading,      setIsLoading]      = useState(true);
     const [error,          setError]          = useState('');
 
-    // ─── Load-status map ────────────────────────────────────────────────────
-    const [loadStatusMap,      setLoadStatusMap]      = useState(new Map());
+    // ─── Mobile drawer state (% of vh for the LIST panel height) ────────────
+    const [drawerPct,      setDrawerPct]      = useState(SNAP_FULL);
+    const drawerDragging   = useRef(false);
+    const drawerStartY     = useRef(0);
+    const drawerStartPct   = useRef(SNAP_FULL);
 
-    // ─── Compare + annotated ────────────────────────────────────────────────
+    // ─── Load-status / compare / annotated ──────────────────────────────────
+    const [loadStatusMap,      setLoadStatusMap]      = useState(new Map());
     const [compareHospitals,   setCompareHospitals]   = useState([]);
     const [annotatedHospitals, setAnnotatedHospitals] = useState([]);
 
-    // ─── Draggable sidebar (desktop only) ───────────────────────────────────
-    const [sidebarWidth,   setSidebarWidth]   = useState(null); // null = CSS default
+    // ─── Desktop sidebar drag ────────────────────────────────────────────────
+    const [sidebarWidth,   setSidebarWidth]   = useState(null);
     const isDragging       = useRef(false);
     const dragStartX       = useRef(0);
     const dragStartWidth   = useRef(0);
@@ -53,14 +63,15 @@ function App() {
     // ─── URL params ─────────────────────────────────────────────────────────
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const query              = useMemo(() => searchParams.get('q'),              [searchParams]);
-    const type               = useMemo(() => searchParams.get('type'),            [searchParams]);
-    const radius             = useMemo(() => searchParams.get('radiusKm') || '',  [searchParams]);
-    const decisionMode       = useMemo(() => searchParams.get('mode') || null,    [searchParams]);
-    const isEmergencyMode    = useMemo(() => searchParams.get('emergency') === '1', [searchParams]);
-    const selectedHospitalId = useMemo(() => searchParams.get('hospital'),        [searchParams]);
+    const query               = useMemo(() => searchParams.get('q'),              [searchParams]);
+    const type                = useMemo(() => searchParams.get('type'),            [searchParams]);
+    const radius              = useMemo(() => searchParams.get('radiusKm') || '',  [searchParams]);
+    const decisionMode        = useMemo(() => searchParams.get('mode') || null,    [searchParams]);
+    const isEmergencyMode     = useMemo(() => searchParams.get('emergency') === '1', [searchParams]);
+    const isCurrentlyAvailable = useMemo(() => searchParams.get('now') === '1',   [searchParams]);
+    const selectedHospitalId  = useMemo(() => searchParams.get('hospital'),        [searchParams]);
     const navigatingToHospitalId = useMemo(() => searchParams.get('navigatingTo'), [searchParams]);
-    const doctorIdToBook     = useMemo(() => searchParams.get('bookDoctor'),      [searchParams]);
+    const doctorIdToBook      = useMemo(() => searchParams.get('bookDoctor'),      [searchParams]);
 
     const selectedHospital = useMemo(() => {
         const id = selectedHospitalId || navigatingToHospitalId;
@@ -79,9 +90,7 @@ function App() {
         );
     }, []);
 
-    useEffect(() => {
-        getHospitalLoadStatus().then(setLoadStatusMap);
-    }, []);
+    useEffect(() => { getHospitalLoadStatus().then(setLoadStatusMap); }, []);
 
     // ─── Main data fetch ─────────────────────────────────────────────────────
     useEffect(() => {
@@ -102,7 +111,9 @@ function App() {
             setError('');
             try {
                 let data;
-                if (isEmergencyMode) {
+                if (isCurrentlyAvailable) {
+                    data = await getCurrentlyAvailable(userLocation[0], userLocation[1]);
+                } else if (isEmergencyMode) {
                     data = await getEmergencyHospitals(userLocation[0], userLocation[1]);
                 } else if (decisionMode) {
                     data = await getHospitalsByDecisionMode(userLocation[0], userLocation[1], decisionMode);
@@ -121,18 +132,60 @@ function App() {
 
         fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userLocation, query, type, radius, selectedHospitalId, decisionMode, isEmergencyMode, searchResults.length]);
+    }, [userLocation, query, type, radius, selectedHospitalId,
+        decisionMode, isEmergencyMode, isCurrentlyAvailable, searchResults.length]);
 
-    // ─── Draggable resize (desktop only) ────────────────────────────────────
+    // ─── Mobile drawer drag handlers ─────────────────────────────────────────
 
-    const onDragStart = useCallback((e) => {
-        // Only on desktop (md+)
+    const onDrawerDragStart = useCallback((e) => {
+        if (window.innerWidth >= 768) return; // desktop only uses sidebar
+        drawerDragging.current  = true;
+        drawerStartY.current    = e.touches?.[0]?.clientY ?? e.clientY;
+        drawerStartPct.current  = drawerPct;
+        e.preventDefault();
+    }, [drawerPct]);
+
+    useEffect(() => {
+        const onMove = (e) => {
+            if (!drawerDragging.current) return;
+            const clientY  = e.touches?.[0]?.clientY ?? e.clientY;
+            const deltaPx  = drawerStartY.current - clientY;
+            const deltaPct = (deltaPx / window.innerHeight) * 100;
+            const newPct   = Math.max(SNAP_PEEK, Math.min(SNAP_FULL, drawerStartPct.current + deltaPct));
+            setDrawerPct(newPct);
+        };
+
+        const onEnd = () => {
+            if (!drawerDragging.current) return;
+            drawerDragging.current = false;
+            // Snap to nearest position
+            setDrawerPct(prev => {
+                const diffs = [SNAP_PEEK, SNAP_HALF, SNAP_FULL].map(s => Math.abs(s - prev));
+                const idx   = diffs.indexOf(Math.min(...diffs));
+                return [SNAP_PEEK, SNAP_HALF, SNAP_FULL][idx];
+            });
+        };
+
+        window.addEventListener('touchmove',   onMove, { passive: false });
+        window.addEventListener('touchend',    onEnd);
+        window.addEventListener('mousemove',   onMove);
+        window.addEventListener('mouseup',     onEnd);
+        return () => {
+            window.removeEventListener('touchmove', onMove);
+            window.removeEventListener('touchend',  onEnd);
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup',   onEnd);
+        };
+    }, []);
+
+    // ─── Desktop sidebar drag ─────────────────────────────────────────────────
+
+    const onSidebarDragStart = useCallback((e) => {
         if (window.innerWidth < 768) return;
-        isDragging.current   = true;
-        dragStartX.current   = e.clientX;
-        dragStartWidth.current = sidebarWidth ??
-            Math.round(window.innerWidth * SIDEBAR_DEFAULT_PCT);
-        document.body.style.cursor    = 'col-resize';
+        isDragging.current     = true;
+        dragStartX.current     = e.clientX;
+        dragStartWidth.current = sidebarWidth ?? Math.round(window.innerWidth * SIDEBAR_DEFAULT_PCT);
+        document.body.style.cursor     = 'col-resize';
         document.body.style.userSelect = 'none';
         e.preventDefault();
     }, [sidebarWidth]);
@@ -140,21 +193,15 @@ function App() {
     useEffect(() => {
         const onMouseMove = (e) => {
             if (!isDragging.current) return;
-            const delta   = e.clientX - dragStartX.current;
-            const newWidth = Math.min(
-                SIDEBAR_MAX,
-                Math.max(SIDEBAR_MIN, dragStartWidth.current + delta)
-            );
+            const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, dragStartWidth.current + (e.clientX - dragStartX.current)));
             setSidebarWidth(newWidth);
         };
-
         const onMouseUp = () => {
             if (!isDragging.current) return;
             isDragging.current             = false;
             document.body.style.cursor     = '';
             document.body.style.userSelect = '';
         };
-
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup',   onMouseUp);
         return () => {
@@ -182,7 +229,8 @@ function App() {
         next.hospital = hospitalId;
         delete next.navigatingTo;
         setSearchParams(next, { replace: true });
-        setMobileView('list');
+        // On mobile, snap to half so map is visible with the route
+        if (window.innerWidth < 768) setDrawerPct(SNAP_HALF);
     };
 
     const handleDoctorSelect    = (doctorId) =>
@@ -196,6 +244,7 @@ function App() {
         const r = searchParams.get('radiusKm');
         if (r) next.radiusKm = r;
         setSearchParams(next, { replace: true });
+        if (window.innerWidth < 768) setDrawerPct(SNAP_FULL);
     };
 
     const closeModal = () => {
@@ -217,6 +266,14 @@ function App() {
         const r = searchParams.get('radiusKm');
         if (r) next.radiusKm = r;
         if (!isEmergencyMode) next.emergency = '1';
+        setSearchParams(next, { replace: true });
+    };
+
+    const handleCurrentlyAvailableToggle = () => {
+        const next = {};
+        const r = searchParams.get('radiusKm');
+        if (r) next.radiusKm = r;
+        if (!isCurrentlyAvailable) next.now = '1';
         setSearchParams(next, { replace: true });
     };
 
@@ -253,6 +310,8 @@ function App() {
                 onDecisionMode={handleDecisionMode}
                 isEmergencyMode={isEmergencyMode}
                 onEmergencyToggle={handleEmergencyToggle}
+                isCurrentlyAvailable={isCurrentlyAvailable}
+                onCurrentlyAvailableToggle={handleCurrentlyAvailableToggle}
                 loadStatusMap={loadStatusMap}
                 onCompareHospitalsChange={setCompareHospitals}
                 onAnnotatedChange={setAnnotatedHospitals}
@@ -260,7 +319,23 @@ function App() {
         );
     };
 
-    // ─── Full-screen navigation view ──────────────────────────────────────────
+    const mapView = (
+        <MapView
+            userLocation={userLocation}
+            hospitals={searchResults}
+            annotatedHospitals={annotatedHospitals}
+            hospital={selectedHospital}
+            onMarkerClick={handleHospitalSelect}
+            searchType={type}
+            radiusKm={radius}
+            routingMode={routingMode}
+            setRoutingMode={setRoutingMode}
+            loadStatusMap={loadStatusMap}
+            compareHospitals={compareHospitals}
+        />
+    );
+
+    // ─── Navigation full-screen ───────────────────────────────────────────────
 
     if (navigatingToHospitalId && selectedHospital && userLocation) {
         return (
@@ -272,97 +347,123 @@ function App() {
         );
     }
 
-    // ─── Main layout ──────────────────────────────────────────────────────────
+    // ─── Desktop sidebar style ────────────────────────────────────────────────
 
-    // Desktop sidebar style: use dragged width if set, else CSS fallback
     const sidebarStyle = sidebarWidth
         ? { width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px`, maxWidth: `${sidebarWidth}px` }
         : {};
 
+    // ─── Snap indicator dots ──────────────────────────────────────────────────
+
+    const snapDots = [SNAP_FULL, SNAP_HALF, SNAP_PEEK].map(snap => (
+        <span
+            key={snap}
+            className={`block w-1.5 h-1.5 rounded-full transition-all ${Math.abs(drawerPct - snap) < 8 ? 'bg-indigo-600 scale-125' : 'bg-slate-300'}`}
+        />
+    ));
+
     return (
-        <div
-            ref={containerRef}
-            className="h-[100dvh] w-full bg-slate-100 flex flex-col md:flex-row overflow-hidden relative"
-        >
+        <div ref={containerRef} className="h-[100dvh] w-full bg-slate-100 overflow-hidden">
             <Analytics />
 
-            {/* ── Left sidebar panel ─────────────────────────────────────── */}
-            <div
-                style={sidebarStyle}
-                className={`
-                    absolute md:relative w-full h-full z-20 bg-white shadow-lg
-                    ${!sidebarWidth ? 'md:w-[45%] lg:w-[35%]' : ''}
-                    transform transition-transform duration-300 ease-in-out
-                    ${mobileView === 'list' ? 'translate-x-0' : '-translate-x-full'}
-                    md:translate-x-0 flex-shrink-0
-                `}
-            >
-                <div className="h-full flex flex-col">
-                    {renderLeftPanel()}
-                </div>
-            </div>
+            {/* ════════════════════════════════════════════════════════════
+                DESKTOP LAYOUT (md and above) — side-by-side
+            ════════════════════════════════════════════════════════════ */}
+            <div className="hidden md:flex h-full w-full flex-row">
 
-            {/* ── Drag handle (desktop only) ─────────────────────────────── */}
-            <div
-                onMouseDown={onDragStart}
-                className="
-                    hidden md:flex
-                    w-1.5 flex-shrink-0 z-30
-                    items-center justify-center
-                    cursor-col-resize
-                    bg-slate-200 hover:bg-indigo-400
-                    transition-colors duration-150
-                    group relative
-                "
-                title="Drag to resize"
-            >
-                {/* Visual grip dots */}
-                <div className="absolute inset-y-0 flex flex-col items-center justify-center gap-1 pointer-events-none">
-                    {[...Array(5)].map((_, i) => (
-                        <span
-                            key={i}
-                            className="w-1 h-1 rounded-full bg-slate-400 group-hover:bg-white transition-colors"
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* ── Right map panel ────────────────────────────────────────── */}
-            <div
-                className={`
-                    absolute md:relative w-full h-full flex-grow z-10
-                    transform transition-transform duration-300 ease-in-out
-                    ${mobileView === 'map' ? 'translate-x-0' : 'translate-x-full'}
-                    md:translate-x-0
-                `}
-            >
-                <MapView
-                    userLocation={userLocation}
-                    hospitals={searchResults}
-                    annotatedHospitals={annotatedHospitals}
-                    hospital={selectedHospital}
-                    onMarkerClick={handleHospitalSelect}
-                    searchType={type}
-                    radiusKm={radius}
-                    routingMode={routingMode}
-                    setRoutingMode={setRoutingMode}
-                    loadStatusMap={loadStatusMap}
-                    compareHospitals={compareHospitals}
-                />
-            </div>
-
-            {/* ── Mobile list/map toggle ─────────────────────────────────── */}
-            <div className="md:hidden absolute bottom-4 right-4 z-30 flex gap-2">
-                <button
-                    onClick={() => setMobileView(v => v === 'list' ? 'map' : 'list')}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-colors"
+                {/* Sidebar */}
+                <div
+                    style={sidebarStyle}
+                    className={`relative flex-shrink-0 h-full bg-white shadow-lg z-20 ${!sidebarWidth ? 'w-[45%] lg:w-[35%]' : ''}`}
                 >
-                    {mobileView === 'list' ? <MapIcon size={20} /> : <List size={20} />}
-                    <span>{mobileView === 'list' ? 'Map' : 'List'}</span>
-                </button>
+                    <div className="h-full flex flex-col">{renderLeftPanel()}</div>
+                </div>
+
+                {/* Drag handle */}
+                <div
+                    onMouseDown={onSidebarDragStart}
+                    className="w-1.5 flex-shrink-0 z-30 flex items-center justify-center cursor-col-resize bg-slate-200 hover:bg-indigo-400 transition-colors duration-150 group relative"
+                    title="Drag to resize"
+                >
+                    <div className="absolute inset-y-0 flex flex-col items-center justify-center gap-1 pointer-events-none">
+                        {[...Array(5)].map((_, i) => (
+                            <span key={i} className="w-1 h-1 rounded-full bg-slate-400 group-hover:bg-white transition-colors" />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Map */}
+                <div className="flex-grow h-full z-10">{mapView}</div>
             </div>
 
-            {/* ── Doctor booking modal ───────────────────────────────────── */}
+            {/* ════════════════════════════════════════════════════════════
+                MOBILE LAYOUT — map behind, bottom-sheet list drawer
+            ════════════════════════════════════════════════════════════ */}
+            <div className="md:hidden h-full w-full relative flex flex-col">
+
+                {/* Map layer — always visible behind */}
+                <div
+                    className="absolute inset-0 z-0"
+                    style={{ bottom: `${drawerPct}dvh` }}
+                >
+                    {mapView}
+                </div>
+
+                {/* Map peek area — tap to expand map */}
+                {drawerPct > SNAP_PEEK + 4 && (
+                    <div
+                        className="absolute z-10 bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-white/90 rounded-full shadow-md cursor-pointer mb-1"
+                        style={{ bottom: `${drawerPct}dvh`, marginBottom: '4px' }}
+                        onClick={() => setDrawerPct(SNAP_PEEK)}
+                    >
+                        <MapIcon size={13} className="text-indigo-600" />
+                        <span className="text-xs font-semibold text-indigo-700">See map</span>
+                        <ChevronDown size={13} className="text-indigo-500" />
+                    </div>
+                )}
+
+                {/* Bottom sheet list drawer */}
+                <div
+                    className="absolute z-20 left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl flex flex-col overflow-hidden"
+                    style={{
+                        height:     `${drawerPct}dvh`,
+                        transition: drawerDragging.current ? 'none' : 'height 0.3s cubic-bezier(0.32,0.72,0,1)',
+                    }}
+                >
+                    {/* Drag handle bar */}
+                    <div
+                        className="flex-shrink-0 flex flex-col items-center pt-2 pb-1 cursor-grab active:cursor-grabbing select-none"
+                        onMouseDown={onDrawerDragStart}
+                        onTouchStart={onDrawerDragStart}
+                    >
+                        {/* Visual pill */}
+                        <div className="w-10 h-1 bg-slate-300 rounded-full mb-2" />
+
+                        {/* Snap position indicator dots */}
+                        <div className="flex items-center gap-1.5">
+                            {snapDots}
+                        </div>
+
+                        {/* Expand/collapse hint when peeking */}
+                        {drawerPct <= SNAP_PEEK + 4 && (
+                            <div
+                                className="flex items-center gap-1 mt-1.5 text-xs text-indigo-600 font-semibold cursor-pointer"
+                                onClick={() => setDrawerPct(SNAP_FULL)}
+                            >
+                                <ChevronUp size={14} />
+                                Hospitals
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Panel content */}
+                    <div className="flex-grow overflow-hidden">
+                        {renderLeftPanel()}
+                    </div>
+                </div>
+            </div>
+
+            {/* Doctor booking modal */}
             {doctorIdToBook && userLocation && (
                 <DoctorBookingModal
                     doctorId={doctorIdToBook}

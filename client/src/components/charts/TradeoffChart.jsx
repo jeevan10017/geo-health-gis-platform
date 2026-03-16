@@ -125,7 +125,7 @@ const TradeoffChart = ({ userLocation, onClose }) => {
                     <div>
                         <h2 className="text-xl font-bold text-slate-800">Distance vs Wait Time</h2>
                         <p className="text-xs text-slate-500 mt-0.5">
-                            Find hospitals that are both close <em>and</em> fast — not just the nearest one.
+                            Find hospitals that are both close <em>and</em> fast -not just the nearest one.
                         </p>
                     </div>
                     <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100">
@@ -254,7 +254,7 @@ const TradeoffChart = ({ userLocation, onClose }) => {
                                 <span className="text-green-600 font-medium">
                                     below-average distance AND wait time
                                 </span>{' '}
-                                — your sweet spot.
+                                - your sweet spot.
                             </p>
                         </>
                     )}

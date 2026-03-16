@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Car, MapPin, Star, Clock, Bed, Siren } from 'lucide-react';
+import { Car, MapPin, Star, Clock, Bed, Siren, Zap } from 'lucide-react';
 
 const costLabel    = { 1: '💚 Govt', 2: '🟡 Mid', 3: '🔴 Pvt' };
 const loadColor    = { green: 'bg-green-100 text-green-700', yellow: 'bg-amber-100 text-amber-700', red: 'bg-red-100 text-red-700' };
@@ -42,6 +42,13 @@ const HospitalCard = ({
                     : 'hover:shadow-md hover:border-indigo-500'}
             `}
         >
+            {/* Smart tip banner */}
+            {hospital.smart_tip && (
+                <div className="flex items-start gap-1.5 bg-indigo-50 border border-indigo-200 rounded-md px-2.5 py-1.5 mb-3 text-xs text-indigo-800">
+                    <Zap size={12} className="text-indigo-500 flex-shrink-0 mt-0.5" />
+                    <span><strong>Faster route:</strong> {hospital.smart_tip}</span>
+                </div>
+            )}
             {/* ── Top row ── */}
             <div className="flex items-start gap-2">
                 {compareMode && (

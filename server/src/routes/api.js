@@ -9,6 +9,7 @@ const debug    = require('../controllers/debugController');
 
 // ─── healthController ────────────────────────────────────────────────────────
 
+router.get('/hospitals/currently-available', health.getCurrentlyAvailable);
 router.get('/hospitals',                 health.getInitialHospitals);
 router.get('/hospitals/:id',             health.getHospitalById);
 router.get('/hospitals/:id/doctors',     health.getDoctorsByHospital);
@@ -18,6 +19,7 @@ router.get('/search',                    health.unifiedSearch);
 router.get('/search/advanced',           health.advancedSearch);
 router.get('/doctors/:id',               health.getDoctorById);
 router.get('/route',                     health.getRoute);
+router.get('/route/ors',                 health.getOrsRoute);
 
 
 // ─── decisionController ───────────────────────────────────────────────────────
@@ -32,6 +34,7 @@ router.get('/hospital-load',             decision.getHospitalLoadStatus);
 // ─── Debug (remove or gate with env check before going to production) ─────────
 
 router.get('/debug/network-check',       debug.networkCheck);
+router.get('/debug/ors-test',            debug.orsTest);
 
 
 module.exports = router;

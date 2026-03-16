@@ -47,6 +47,21 @@ const normalizeHospital = (h) => ({
  * GET /api/hospitals
  * Nearby hospitals sorted by road-network distance (pgRouting Dijkstra).
  */
+/**
+ * GET /api/hospitals/currently-available
+ * Hospitals with doctors on-duty RIGHT NOW, Pareto-scored.
+ */
+export const getCurrentlyAvailable = async (lat, lon) => {
+    try {
+        const { data } = await axios.get(`${API_URL}/hospitals/currently-available`, {
+            params: { lat, lon },
+        });
+        return data.map(normalizeHospital);
+    } catch (error) {
+        handleApiError(error, 'Failed to fetch currently available hospitals.');
+    }
+};
+
 export const getInitialHospitals = async (lat, lon, radiusKm) => {
     try {
         const params = { lat, lon, radiusKm };
@@ -137,6 +152,30 @@ export const getDoctorDetails = async (doctorId, lat, lon) => {
  * GET /api/route
  * Road-network route geometry (GeoJSON MultiLineString).
  */
+/**
+ * GET /api/route/ors
+ * OpenRouteService route — real turn-by-turn, terrain, surface data.
+ * Falls back to pgRouting when ORS key not configured.
+ */
+export const getOrsRoute = async (fromLat, fromLon, toLat, toLon, profile = 'driving-car') => {
+    const coords = [fromLat, fromLon, toLat, toLon].map(Number);
+    if (coords.some(isNaN)) {
+        console.warn('[getOrsRoute] Invalid coords — skipping', { fromLat, fromLon, toLat, toLon });
+        return null;
+    }
+    console.log(`[getOrsRoute] Calling ${API_URL}/route/ors`, { fromLat: coords[0], fromLon: coords[1], toLat: coords[2], toLon: coords[3] });
+    try {
+        const { data } = await axios.get(`${API_URL}/route/ors`, {
+            params: { fromLat: coords[0], fromLon: coords[1], toLat: coords[2], toLon: coords[3], profile },
+        });
+        console.log('[getOrsRoute] Success — method:', data.routing_method, '| segments:', data.colored_segments?.length, '| time:', data.total_time_minutes, 'min');
+        return data;
+    } catch (error) {
+        console.error('[getOrsRoute] FAILED:', error?.response?.status, error?.response?.data ?? error.message);
+        return null;
+    }
+};
+
 export const getRouteGeometry = async (fromLat, fromLon, toLat, toLon) => {
     // Guard — never send NaN to the server
     const coords = [fromLat, fromLon, toLat, toLon].map(Number);
@@ -151,9 +190,13 @@ export const getRouteGeometry = async (fromLat, fromLon, toLat, toLon) => {
                 toLat:   coords[2], toLon:   coords[3],
             },
         });
+        // New response shape: { geometry, total_distance_m, total_time_minutes, steps, routing_method }
+        // Return the full object; callers that only need geometry can use data.geometry
         return data;
     } catch (error) {
-        handleApiError(error, 'Failed to fetch route geometry.');
+        // Don't throw — let callers handle null gracefully
+        console.error('[getRouteGeometry]', error?.response?.data?.error || error.message);
+        return null;
     }
 };
 

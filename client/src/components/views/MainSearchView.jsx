@@ -6,6 +6,7 @@ import { Siren, GitCompare, ScatterChart, X, CheckSquare, SlidersHorizontal } fr
 
 import SearchBar             from '../common/SearchBar';
 import HospitalCard          from '../cards/HospitalCard';
+import CurrentlyAvailableCard from '../cards/CurrentlyAvailableCard';
 import SpecialtyResultCard   from '../cards/SpecialtyResultCard';
 import ComparePanel          from '../panels/ComparePanel';
 import TradeoffChart         from '../charts/TradeoffChart';
@@ -61,6 +62,8 @@ const MainSearchView = ({
     onDecisionMode,
     isEmergencyMode,
     onEmergencyToggle,
+    isCurrentlyAvailable,
+    onCurrentlyAvailableToggle,
     loadStatusMap,
     onCompareHospitalsChange,
     onAnnotatedChange,          // lift annotated results to App → MapView
@@ -86,7 +89,7 @@ const MainSearchView = ({
 
     // ── Pareto computation — only for default/specialty search ───────────────
     // Decision-mode and emergency have their own explicit sort; don't overlay Pareto there.
-    const shouldAnnotate = !isEmergencyMode && !decisionMode;
+    const shouldAnnotate = !isEmergencyMode && !decisionMode && !isCurrentlyAvailable;
 
     const annotated = useMemo(() => {
         if (!searchResults?.length) return searchResults;
@@ -129,7 +132,9 @@ const MainSearchView = ({
     }, [isEmergencyMode, type]);
 
     // ── Derived ───────────────────────────────────────────────────────────────
-    const searchTitle = isEmergencyMode
+    const searchTitle = isCurrentlyAvailable
+        ? '🟢 Doctors Available Now'
+        : isEmergencyMode
         ? '🚨 Emergency Hospitals'
         : decisionMode
         ? { fastest: 'Fastest to Reach', wait: 'Least Wait Time', rating: 'Top Rated', cheapest: 'Most Affordable' }[decisionMode]
@@ -226,11 +231,41 @@ const MainSearchView = ({
     const renderResults = () => {
         if (isLoading) return <Loader />;
         if (error)     return <p className="text-center text-red-600 p-4">{error}</p>;
-        if (annotated.length === 0)
+        if (annotated.length === 0) {
+            if (isCurrentlyAvailable) {
+                return (
+                    <div className="text-center py-8 px-4">
+                        <div className="text-4xl mb-3">🏥</div>
+                        <p className="text-slate-700 font-semibold">No doctors on duty right now</p>
+                        <p className="text-slate-500 text-sm mt-1">
+                            Try visiting during clinic hours or use the date filter in a hospital's detail view.
+                        </p>
+                    </div>
+                );
+            }
             return <p className="text-center text-slate-500 p-4">No results found.</p>;
+        }
 
-        return annotated.map((item, listIndex) => {
-            // Badge: Pareto rank badge (only when Pareto is active)
+        // ── Currently Available mode: use dedicated card ──────────────────────
+        if (isCurrentlyAvailable) {
+            return annotated.map(item => (
+                <div key={item.hospital_id} className="relative">
+                    {item.is_best_now && (
+                        <span className="absolute -top-1.5 -right-1 z-10 flex items-center gap-0.5 bg-green-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow animate-pulse">
+                            ★ Best Now
+                        </span>
+                    )}
+                    <CurrentlyAvailableCard
+                        hospital={item}
+                        onClick={onHospitalSelect}
+                        isBestNow={!!item.is_best_now}
+                    />
+                </div>
+            ));
+        }
+
+        return annotated.map((item) => {
+            // Pareto rank badge
             const badge = item.isTopChoice
                 ? (
                     <span className="absolute -top-1.5 -right-1 z-10 flex items-center gap-0.5 bg-indigo-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow">
@@ -331,6 +366,16 @@ const MainSearchView = ({
 
                 {/* ── Row 2: Action buttons ──────────────────────────────── */}
                 <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+
+                    {/* Currently Available — live green pulse */}
+                    <button
+                        onClick={onCurrentlyAvailableToggle}
+                        title="Hospitals with doctors on duty right now, sorted by best reachable option"
+                        className={`flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150 ${isCurrentlyAvailable ? 'bg-green-600 text-white border-green-600 shadow-sm' : 'bg-white text-green-700 border-green-300 hover:bg-green-50'}`}
+                    >
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrentlyAvailable ? 'bg-white' : 'bg-green-500 animate-pulse'}`} />
+                        Available Now
+                    </button>
 
                     {/* Emergency */}
                     <button

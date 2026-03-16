@@ -7,8 +7,174 @@ import {
 import L from 'leaflet';
 import RoutingMachine    from './RoutingMachine';
 import HighlightedMarker from './HighlightedMarker';
-import { getRouteGeometry } from '../../services/apiService';
+import { getRouteGeometry, getOrsRoute } from '../../services/apiService';
 import { COMPARE_COLORS } from '../panels/ComparePanel';
+
+// ─────────────────────────────────────────────
+//  Colored segments renderer (ORS)
+// ─────────────────────────────────────────────
+
+const ColoredRoute = ({ segments, routeKey }) => {
+    if (!segments?.length) return null;
+    return (
+        <>
+            {segments.map((seg, i) => (
+                <GeoJSON
+                    key={`${routeKey}-seg-${i}`}
+                    data={seg}
+                    style={{
+                        color:    seg.properties?.color ?? '#6366f1',
+                        weight:   6,
+                        opacity:  0.88,
+                        lineCap:  'round',
+                        lineJoin: 'round',
+                    }}
+                />
+            ))}
+        </>
+    );
+};
+
+// ─────────────────────────────────────────────
+//  Route info panel (top-center when hospital selected)
+// ─────────────────────────────────────────────
+
+function RouteInfoPanel({ routeData, hospital }) {
+    const map = useMap();
+
+    useEffect(() => {
+        if (!routeData || !hospital) return;
+
+        const control = L.control({ position: 'topleft' });
+        const container = L.DomUtil.create('div');
+
+        const timeMin  = routeData.total_time_minutes ?? Math.round(hospital.travel_time_minutes);
+        const distKm   = routeData.total_distance_m
+            ? (routeData.total_distance_m / 1000).toFixed(1)
+            : ((hospital.route_distance_meters ?? 0) / 1000).toFixed(1);
+        const method   = routeData.routing_method;
+        const methodBadge = method === 'ors'
+            ? `<span style="background:#dcfce7;color:#15803d;font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px;border:1px solid #86efac;">ORS</span>`
+            : method === 'pgrouting'
+            ? `<span style="background:#e0e7ff;color:#4338ca;font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px;border:1px solid #a5b4fc;">pgRoute</span>`
+            : '';
+
+        // Speed color legend inline
+        const legend = method === 'ors'
+            ? `<div style="display:flex;gap:8px;margin-top:4px;font-size:9px;color:#64748b;">
+                <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:3px;background:#16a34a;border-radius:2px;display:inline-block;"></span>Fast</span>
+                <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:3px;background:#f59e0b;border-radius:2px;display:inline-block;"></span>Moderate</span>
+                <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:3px;background:#dc2626;border-radius:2px;display:inline-block;"></span>Slow</span>
+               </div>`
+            : '';
+
+        container.style.cssText =
+            'background:white;padding:10px 14px;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.18);' +
+            'margin-top:8px;margin-left:8px;pointer-events:none;min-width:180px;';
+
+        container.innerHTML = `
+            <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">
+                Route to ${hospital.hospital_name ?? ''}
+            </div>
+            <div style="display:flex;align-items:baseline;gap:12px;">
+                <div>
+                    <span style="font-size:26px;font-weight:900;color:#4f46e5;line-height:1;">${timeMin}</span>
+                    <span style="font-size:11px;color:#64748b;margin-left:2px;">min</span>
+                </div>
+                <div>
+                    <span style="font-size:22px;font-weight:800;color:#334155;line-height:1;">${distKm}</span>
+                    <span style="font-size:11px;color:#64748b;margin-left:2px;">km</span>
+                </div>
+                ${methodBadge}
+            </div>
+            ${legend}
+        `;
+
+        control.onAdd = () => container;
+        map.addControl(control);
+        return () => map.removeControl(control);
+    }, [routeData, hospital, map]); // eslint-disable-line
+
+    return null;
+}
+
+
+// ─────────────────────────────────────────────
+//  Smart routing layer — ORS first, pgRouting fallback
+//  Also renders the RouteInfoPanel
+// ─────────────────────────────────────────────
+
+// Shared state to expose actual route time back to the parent marker tooltip
+const useRouteData = () => {
+    const [routeData, setRouteData] = useState(null);
+    const [routeKey,  setRouteKey]  = useState(0);
+    return { routeData, setRouteData, routeKey, setRouteKey };
+};
+
+const SmartRoutingLayer = ({ userLocation, hospital, onRouteData }) => {
+    const [routeData, setRouteData] = useState(null);
+    const [routeKey,  setRouteKey]  = useState(0);
+    const map = useMap();
+
+    useEffect(() => {
+        if (!userLocation || !hospital) { setRouteData(null); onRouteData?.(null); return; }
+
+        const toLat = parseFloat(hospital.lat);
+        const toLon = parseFloat(hospital.lon);
+        if (isNaN(toLat) || isNaN(toLon)) return;
+
+        let live = true;
+        setRouteData(null);
+
+        const fetch = async () => {
+            const orsData = await getOrsRoute(userLocation[0], userLocation[1], toLat, toLon);
+            if (!live) return;
+
+            if (orsData?.geometry) {
+                setRouteData(orsData);
+                onRouteData?.(orsData);
+                setRouteKey(k => k + 1);
+                const bounds = L.geoJSON(orsData.geometry).getBounds();
+                if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60] });
+                return;
+            }
+
+            const pgData = await getRouteGeometry(userLocation[0], userLocation[1], toLat, toLon);
+            if (!live || !pgData) return;
+
+            const geoJSON = pgData.geometry ?? pgData;
+            if (!geoJSON) return;
+            const resolved = { geometry: geoJSON, routing_method: 'pgrouting',
+                total_time_minutes: pgData.total_time_minutes, total_distance_m: pgData.total_distance_m };
+            setRouteData(resolved);
+            onRouteData?.(resolved);
+            setRouteKey(k => k + 1);
+            const bounds = L.geoJSON(geoJSON).getBounds();
+            if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60] });
+        };
+
+        fetch();
+        return () => { live = false; };
+    }, [userLocation, hospital?.hospital_id, map]); // eslint-disable-line
+
+    if (!routeData) return null;
+
+    const isOrs = routeData.routing_method === 'ors';
+
+    return (
+        <>
+            <RouteInfoPanel routeData={routeData} hospital={hospital} />
+            {isOrs && routeData.colored_segments?.length > 0
+                ? <ColoredRouteWithTooltip segments={routeData.colored_segments} routeKey={routeKey} />
+                : <GeoJSON
+                    key={routeKey}
+                    data={routeData.geometry}
+                    style={{ color: '#6366f1', weight: 6, opacity: 0.85 }}
+                  />
+            }
+        </>
+    );
+};
 
 // ─────────────────────────────────────────────
 //  Compare routes layer — one coloured route per hospital
@@ -41,10 +207,12 @@ const CompareRoutesLayer = ({ userLocation, hospitals }) => {
                         return getRouteGeometry(
                             userLocation[0], userLocation[1],
                             lat, lon
-                        ).then(geoJSON => ({
-                            geoJSON,
-                            color: COMPARE_COLORS[i % COMPARE_COLORS.length],
-                            name:  h.name || h.hospital_name,
+                        ).then(data => ({
+                            // New response: { geometry, ... } or null
+                            geoJSON: data?.geometry ?? data,
+                            color:   COMPARE_COLORS[i % COMPARE_COLORS.length],
+                            name:    h.name || h.hospital_name,
+                            time:    data?.total_time_minutes,
                         }));
                     })
             );
@@ -176,32 +344,82 @@ function MapViewController({ hospitals, selectedHospital, userLocation, routingM
 }
 
 
-// ─────────────────────────────────────────────
-//  pgRouting GeoJSON layer
-// ─────────────────────────────────────────────
+// ─── Colored segments with hover tooltip showing time ────────────────────────
 
-const PgRoutingLayer = ({ userLocation, hospital }) => {
-    const [routeGeoJSON, setRouteGeoJSON] = useState(null);
-    const map = useMap();
+const ColoredRouteWithTooltip = ({ segments, routeKey }) => {
+    if (!segments?.length) return null;
 
-    useEffect(() => {
-        if (!userLocation || !hospital) { setRouteGeoJSON(null); return; }
-        let live = true;
-        getRouteGeometry(userLocation[0], userLocation[1], hospital.lat, hospital.lon)
-            .then(data => {
-                if (!live || !data) return;
-                setRouteGeoJSON(data);
-                const bounds = L.geoJSON(data).getBounds();
-                if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50] });
-            })
-            .catch(() => { if (live) setRouteGeoJSON(null); });
-        return () => { live = false; };
-    }, [userLocation, hospital, map]);
+    // Show time labels on segments longer than 1km (avoid clutter on short ones)
+    const labelMarkers = segments
+        .filter(seg => (seg.properties?.distance_m ?? 0) >= 800)
+        .map((seg, i) => {
+            const coords = seg.geometry?.coordinates ?? [];
+            if (coords.length < 2) return null;
+            // Use midpoint coordinate
+            const mid = coords[Math.floor(coords.length / 2)];
+            const props     = seg.properties ?? {};
+            const timeMin   = props.time_s ? Math.max(1, Math.round(props.time_s / 60)) : null;
+            const color     = props.color ?? '#6366f1';
+            if (!timeMin || !mid) return null;
 
-    if (!routeGeoJSON) return null;
-    return <GeoJSON data={routeGeoJSON} style={{ color: '#ec4899', weight: 6, opacity: 0.8 }} />;
+            const icon = new L.DivIcon({
+                html: `<div style="
+                    background:${color};color:white;
+                    font-size:10px;font-weight:700;
+                    padding:2px 5px;border-radius:10px;
+                    border:1.5px solid white;
+                    box-shadow:0 1px 4px rgba(0,0,0,0.25);
+                    white-space:nowrap;pointer-events:none;
+                    transform:translate(-50%,-50%);
+                ">${timeMin}m</div>`,
+                className: '',
+                iconSize:  [0, 0],
+                iconAnchor:[0, 0],
+            });
+
+            return (
+                <Marker
+                    key={`${routeKey}-label-${i}`}
+                    position={[mid[1], mid[0]]}
+                    icon={icon}
+                    interactive={false}
+                    zIndexOffset={200}
+                />
+            );
+        }).filter(Boolean);
+
+    return (
+        <>
+            {segments.map((seg, i) => {
+                const props   = seg.properties ?? {};
+                const color   = props.color ?? '#6366f1';
+                const timeMin = props.time_s ? Math.max(1, Math.round(props.time_s / 60)) : null;
+                const distKm  = props.distance_m >= 1000
+                    ? `${(props.distance_m / 1000).toFixed(1)} km`
+                    : `${props.distance_m} m`;
+                const tooltip = [
+                    props.road && props.road !== 'Unnamed road' ? props.road : null,
+                    timeMin ? `~${timeMin} min` : null,
+                    distKm,
+                    props.speed_kmh ? `${props.speed_kmh} km/h` : null,
+                    props.label ?? null,
+                ].filter(Boolean).join(' · ');
+
+                return (
+                    <GeoJSON
+                        key={`${routeKey}-seg-${i}`}
+                        data={seg}
+                        style={{ color, weight: 7, opacity: 0.88, lineCap: 'round', lineJoin: 'round' }}
+                        onEachFeature={(feature, layer) => {
+                            if (tooltip) layer.bindTooltip(tooltip, { sticky: true, className: 'hospital-label' });
+                        }}
+                    />
+                );
+            })}
+            {labelMarkers}
+        </>
+    );
 };
-
 
 // ─────────────────────────────────────────────
 //  Routing-mode toggle control (bottom-right)
@@ -254,16 +472,16 @@ function LoadLegendControl() {
     useEffect(() => {
         const control   = L.control({ position: 'topright' });
         const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        // Compact version — just colored dots with short labels
         container.style.cssText =
-            'background:white;padding:8px 12px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);pointer-events:none;font-size:11px;';
-        container.innerHTML = `
-            <div style="font-weight:600;color:#475569;margin-bottom:4px;">Bed Availability</div>
-            ${[['#16a34a','Available (>40%)'],['#d97706','Moderate (15-40%)'],['#dc2626','Crowded (<15%)']].map(
-                ([c, l]) => `<div style="display:flex;align-items:center;gap:6px;color:#475569;margin-top:2px;">
-                    <span style="width:10px;height:10px;border-radius:50%;background:${c};display:inline-block;flex-shrink:0;"></span>${l}
+            'background:rgba(255,255,255,0.92);padding:5px 8px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.12);pointer-events:none;font-size:10px;line-height:1.4;';
+        container.innerHTML =
+            `<div style="font-weight:700;color:#475569;margin-bottom:3px;font-size:9px;text-transform:uppercase;letter-spacing:0.05em;">Beds</div>` +
+            [['#16a34a','>40%'],['#d97706','15–40%'],['#dc2626','<15%']].map(
+                ([c, l]) => `<div style="display:flex;align-items:center;gap:4px;color:#64748b;">
+                    <span style="width:7px;height:7px;border-radius:50%;background:${c};display:inline-block;flex-shrink:0;"></span>${l}
                 </div>`
-            ).join('')}
-        `;
+            ).join('');
         control.onAdd = () => container;
         map.addControl(control);
         return () => map.removeControl(control);
@@ -278,8 +496,8 @@ function LoadLegendControl() {
 
 function MapView({
     userLocation,
-    hospitals,          // raw searchResults (for fallback)
-    annotatedHospitals, // hospitals with isPareto / isTopChoice flags
+    hospitals,
+    annotatedHospitals,
     hospital,
     onMarkerClick,
     searchType,
@@ -290,9 +508,13 @@ function MapView({
     compareHospitals = [],
 }) {
     const isSpecialtySearch = searchType === 'specialty';
+    const isCompareActive   = compareHospitals.length >= 2;
+    const [orsRouteActive, setOrsRouteActive] = useState(false);
+    // Actual route data from SmartRoutingLayer — used to sync marker tooltip time
+    const [actualRouteData, setActualRouteData] = useState(null);
 
-    // When compare panel is open, suppress normal hospital markers entirely
-    const isCompareActive = compareHospitals.length >= 2;
+    // Clear route data when hospital changes
+    useEffect(() => { setActualRouteData(null); }, [hospital?.hospital_id]);
 
     const renderPopup = (h) => (
         <div>
@@ -323,6 +545,8 @@ function MapView({
             />
 
             <RoutingToggleControl routingMode={routingMode} setRoutingMode={setRoutingMode} />
+
+            {/* Route colour legend — removed: hover tooltips on segments now show time/speed */}
 
             {/* Only show the load legend when we actually have data */}
             {loadStatusMap?.size > 0 && <LoadLegendControl />}
@@ -458,19 +682,19 @@ function MapView({
                 <>
                     <Marker
                         position={[parseFloat(hospital.lat), parseFloat(hospital.lon)]}
-                        icon={getIcon(hospital.hospital_id, loadStatusMap)}
+                        icon={getIcon(hospital, loadStatusMap)}
                     >
-                        <Tooltip
-                            permanent
-                            direction="top"
-                            offset={[0, -32]}
-                            className="hospital-label"
-                        >
+                        <Tooltip permanent direction="top" offset={[0, -32]} className="hospital-label">
                             <div>
                                 <div className="font-bold">{hospital.hospital_name}</div>
                                 <div className="text-xs">
-                                    ~{Math.round(hospital.travel_time_minutes)} min /&nbsp;
-                                    {((hospital.route_distance_meters ?? 0) / 1000).toFixed(1)} km
+                                    ~{Math.round(actualRouteData?.total_time_minutes ?? hospital.travel_time_minutes)} min /&nbsp;
+                                    {((actualRouteData?.total_distance_m ?? hospital.route_distance_meters ?? 0) / 1000).toFixed(1)} km
+                                    {actualRouteData && (
+                                        <span className="ml-1 text-[9px] text-indigo-500 font-semibold">
+                                            {actualRouteData.routing_method === 'ors' ? '(ORS)' : '(pgR)'}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </Tooltip>
@@ -480,7 +704,11 @@ function MapView({
                     {routingMode === 'osrm' ? (
                         <RoutingMachine start={userLocation} end={[parseFloat(hospital.lat), parseFloat(hospital.lon)]} />
                     ) : (
-                        <PgRoutingLayer userLocation={userLocation} hospital={hospital} />
+                        <SmartRoutingLayer
+                            userLocation={userLocation}
+                            hospital={hospital}
+                            onRouteData={setActualRouteData}
+                        />
                     )}
                 </>
             )}
