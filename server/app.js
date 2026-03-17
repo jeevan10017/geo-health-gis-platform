@@ -68,7 +68,7 @@ app.use((err, _req, res, _next) => {
 if (require.main === module) {
     app.listen(PORT, () => {
         console.log(`🚀 Server running on http://localhost:${PORT}`);
-        // console.log(`   DB: ${process.env.DB_HOST}/${process.env.DB_DATABASE}`);
+        console.log(`   DB: ${process.env.DB_HOST}/${process.env.DB_DATABASE}`);
         console.log(`   ORS: ${process.env.ORS_API_KEY ? '✓' : '✗ missing'}`);
     });
 }
