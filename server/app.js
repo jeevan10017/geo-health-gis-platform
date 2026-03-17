@@ -8,55 +8,68 @@ const apiRoutes = require('./src/routes/api');
 const app  = express();
 const PORT = process.env.PORT || 4000;
 
-// ─────────────────────────────────────────────
-//  CORS
-// ─────────────────────────────────────────────
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+// Accept:
+//  • any *.vercel.app subdomain (covers both frontend & backend previews)
+//  • localhost for local dev
 
-const allowedOrigins = [
-    'https://geo-health-medinapur.vercel.app',
-    'http://localhost:5173'
-];
-
-const corsOptions = {
+app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+        // No origin = server-to-server / curl / Postman — allow
+        if (!origin) return callback(null, true);
+
+        const allowed =
+            origin.endsWith('.vercel.app') ||      // all Vercel deployments
+            origin === 'http://localhost:5173' ||
+            origin === 'http://localhost:3000' ||
+            origin === 'http://localhost:4000';
+
+        if (allowed) {
             callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+            console.warn(`[CORS] Blocked: ${origin}`);
+            callback(new Error(`CORS: origin ${origin} not allowed`));
         }
-    }
-};
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
-app.use(cors(corsOptions));
+// Pre-flight OPTIONS handled automatically by cors()
+app.options('*', cors());
+
 app.use(express.json());
 
-
-// ─────────────────────────────────────────────
-//  Health-check (keep-alive ping)
-// ─────────────────────────────────────────────
+// ─── Health check ─────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req, res) => {
     res.status(200).json({
-        status:  'ok',
-        message: 'Server is healthy and awake'
+        status:   'ok',
+        db_host:  process.env.DB_HOST || 'not set',
+        ors_key:  process.env.ORS_API_KEY ? 'set' : 'missing',
+        env:      process.env.NODE_ENV || 'development',
     });
 });
 
-
-// ─────────────────────────────────────────────
-//  API routes
-// ─────────────────────────────────────────────
+// ─── API routes ───────────────────────────────────────────────────────────────
 
 app.use('/api', apiRoutes);
 
+// ─── Error handler ────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────
-//  Start server (skipped when imported by tests)
-// ─────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+    console.error('[Error]', err.message);
+    res.status(500).json({ error: err.message });
+});
+
+// ─── Start (local dev only — Vercel ignores this) ────────────────────────────
 
 if (require.main === module) {
     app.listen(PORT, () => {
         console.log(`🚀 Server running on http://localhost:${PORT}`);
+        // console.log(`   DB: ${process.env.DB_HOST}/${process.env.DB_DATABASE}`);
+        console.log(`   ORS: ${process.env.ORS_API_KEY ? '✓' : '✗ missing'}`);
     });
 }
 
