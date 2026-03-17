@@ -34,6 +34,7 @@ router.get('/hospital-load',             decision.getHospitalLoadStatus);
 // ─── Debug (remove or gate with env check before going to production) ─────────
 
 router.get('/debug/network-check',       debug.networkCheck);
+router.get('/debug/db-test',             debug.dbTest);
 router.get('/debug/ors-test',            debug.orsTest);
 
 

@@ -1,5 +1,53 @@
 
-const db = require('../db');
+const db   = require('../db');
+const https = require('https');
+
+// ─────────────────────────────────────────────
+//  GET /api/debug/network-check?lat=&lon=
+// ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+//  GET /api/debug/db-test
+//  Tests the DB connection from Vercel → GCP VM.
+//  Shows exact error so you can diagnose firewall/config issues.
+// ─────────────────────────────────────────────
+
+exports.dbTest = async (req, res) => {
+    const report = {
+        db_host:     process.env.DB_HOST     || 'not set',
+        db_port:     process.env.DB_PORT     || 'not set',
+        db_database: process.env.DB_DATABASE || 'not set',
+        db_user:     process.env.DB_USER     || 'not set',
+        db_password: process.env.DB_PASSWORD ? '*** set ***' : 'NOT SET',
+    };
+
+    try {
+        const start = Date.now();
+        const result = await db.query('SELECT COUNT(*) AS hospitals FROM hospitals');
+        report.status         = 'CONNECTED';
+        report.hospitals      = result.rows[0].hospitals;
+        report.latency_ms     = Date.now() - start;
+    } catch (err) {
+        report.status         = 'FAILED';
+        report.error_message  = err.message;
+        report.error_code     = err.code;
+        // Common codes:
+        // ECONNREFUSED  → port 5432 not open / VM stopped
+        // ECONNABORTED  → timeout — VM is starting up or firewall blocking
+        // 3D000         → database does not exist
+        // 28P01         → wrong password
+        report.hint = {
+            ECONNREFUSED: 'VM stopped or port 5432 firewall not open',
+            ECONNABORTED: 'VM starting up or GCP firewall blocking port 5432',
+            ETIMEDOUT:    'VM stopped or GCP firewall blocking port 5432',
+            '3D000':      'Database geo_health_db does not exist — run schema.sql',
+            '28P01':      'Wrong DB_PASSWORD in Vercel env vars',
+        }[err.code] || 'Check GCP firewall and VM status';
+    }
+
+    res.status(200).json(report);
+};
+
 
 // ─────────────────────────────────────────────
 //  GET /api/debug/network-check?lat=&lon=
@@ -96,13 +144,66 @@ exports.networkCheck = async (req, res) => {
 //  Quick connectivity test for ORS API key
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+//  GET /api/debug/db-check
+//  Raw connection test — shows exact error if GCP is unreachable
+// ─────────────────────────────────────────────
+
+exports.dbCheck = async (req, res) => {
+    const { Client } = require('pg');
+    const config = {
+        host:     process.env.DB_HOST     || 'localhost',
+        port:     parseInt(process.env.DB_PORT || '5432'),
+        database: process.env.DB_DATABASE || 'geo_health_db',
+        user:     process.env.DB_USER     || 'postgres',
+        password: process.env.DB_PASSWORD || 'Password123',
+        connectionTimeoutMillis: 8000,
+    };
+
+    const report = {
+        db_host:     config.host,
+        db_port:     config.port,
+        db_database: config.database,
+        db_user:     config.user,
+        node_env:    process.env.NODE_ENV,
+    };
+
+    const client = new Client(config);
+    try {
+        await client.connect();
+        const r = await client.query(`
+            SELECT
+                (SELECT COUNT(*) FROM hospitals)  AS hospitals,
+                (SELECT COUNT(*) FROM ways WHERE length_m IS NOT NULL) AS road_edges,
+                NOW() AS db_time
+        `);
+        await client.end();
+        report.status    = 'OK';
+        report.hospitals = r.rows[0].hospitals;
+        report.road_edges = r.rows[0].road_edges;
+        report.db_time   = r.rows[0].db_time;
+    } catch (err) {
+        try { await client.end(); } catch (_) {}
+        report.status = 'FAIL';
+        report.error  = err.message;
+        report.code   = err.code;
+        report.hint   = err.code === 'ECONNREFUSED'  ? 'VM is stopped or port 5432 not open in GCP firewall' :
+                        err.code === 'ETIMEDOUT'      ? 'VM is running but port 5432 blocked by GCP firewall' :
+                        err.code === '28P01'           ? 'Wrong DB_PASSWORD' :
+                        err.code === '3D000'           ? 'Wrong DB_DATABASE name' :
+                        'Check all DB_* env vars in Vercel dashboard';
+    }
+    res.status(200).json(report);
+};
+
+
 exports.orsTest = async (req, res) => {
-    const axios  = require('axios');
+    const https  = require('https');
     const apiKey = process.env.ORS_API_KEY;
 
     const report = {
-        key_present: !!apiKey,
-        key_prefix:  apiKey ? apiKey.slice(0, 8) + '...' : null,
+        key_present:  !!apiKey,
+        key_prefix:   apiKey ? apiKey.slice(0, 8) + '...' : null,
         node_version: process.version,
     };
 
@@ -115,32 +216,55 @@ exports.orsTest = async (req, res) => {
     }
 
     try {
-        // Test: KGP → Midnapore
-        const orsRes = await axios.post(
-            'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
-            { coordinates: [[87.3147, 22.3276], [87.3224, 22.4246]] },
-            {
-                headers: {
+        const body = JSON.stringify({
+            coordinates: [[87.3147, 22.3276], [87.3224, 22.4246]],
+        });
+
+        const result = await new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.openrouteservice.org',
+                path:     '/v2/directions/driving-car/geojson',
+                method:   'POST',
+                headers:  {
                     'Authorization': apiKey,
                     'Content-Type':  'application/json',
+                    'Content-Length': Buffer.byteLength(body),
                 },
                 timeout: 10000,
-            }
-        );
+            };
 
-        const feat = orsRes.data.features?.[0];
+            const req = https.request(options, (resp) => {
+                let data = '';
+                resp.on('data', chunk => { data += chunk; });
+                resp.on('end', () => resolve({ status: resp.statusCode, body: data }));
+            });
+
+            req.on('error', reject);
+            req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+            req.write(body);
+            req.end();
+        });
+
+        if (result.status !== 200) {
+            let errMsg = result.body;
+            try { errMsg = JSON.parse(result.body)?.error?.message ?? errMsg; } catch (_) {}
+            report.status     = 'FAIL';
+            report.http_status = result.status;
+            report.reason      = errMsg;
+            return res.status(200).json(report);
+        }
+
+        const data = JSON.parse(result.body);
+        const feat = data.features?.[0];
         report.status          = 'OK';
-        report.http_status     = orsRes.status;
+        report.http_status     = 200;
         report.test_distance_m = Math.round(feat?.properties?.summary?.distance ?? 0);
         report.test_time_min   = Math.round((feat?.properties?.summary?.duration ?? 0) / 60);
         report.has_steps       = (feat?.properties?.segments?.[0]?.steps?.length ?? 0) > 0;
 
     } catch (err) {
-        report.status     = 'FAIL';
-        report.http_status = err.response?.status;
-        report.reason      = err.response?.data?.error?.message
-                          ?? err.response?.data?.message
-                          ?? err.message;
+        report.status = 'FAIL';
+        report.reason = err.message;
     }
 
     res.status(200).json(report);
