@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoHealth — Offline</title>
+  <style>
+    body { font-family: sans-serif; display: flex; align-items: center;
+           justify-content: center; min-height: 100vh; margin: 0;
+           background: #f1f5f9; }
+    .card { background: white; border-radius: 16px; padding: 2rem;
+            text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+            max-width: 340px; }
+    h1 { color: #1e293b; margin: 0 0 0.5rem; }
+    p  { color: #64748b; line-height: 1.6; }
+    .badge { display: inline-block; background: #fef3c7; color: #92400e;
+             border-radius: 20px; padding: 4px 12px; font-size: 13px;
+             font-weight: 600; margin-bottom: 1rem; }
+    .sms   { background: #f0fdf4; border: 1px solid #86efac;
+             border-radius: 12px; padding: 1rem; margin-top: 1rem;
+             text-align: left; font-size: 13px; }
+    code   { background: #e2e8f0; padding: 2px 6px; border-radius: 4px;
+             font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">⚡ Offline Mode</div>
+    <h1>GeoHealth</h1>
+    <p>You're offline. If the app was previously loaded, it should still work from cached data.</p>
+    <button onclick="location.reload()"
+      style="background:#4f46e5;color:white;border:none;border-radius:8px;
+             padding:10px 24px;font-size:14px;cursor:pointer;margin-top:1rem;">
+      Try Again
+    </button>
+    <div class="sms">
+      <strong>📩 No internet? Use SMS:</strong><br/>
+      Send to <code>+91-XXXXXXXXXX</code><br/><br/>
+      <code>CARDIO 22.317 87.300</code><br/>
+      <span style="color:#64748b;font-size:12px;">specialty lat lon</span><br/><br/>
+      <code>EMERGENCY</code><br/>
+      <span style="color:#64748b;font-size:12px;">nearest ICU hospital</span>
+    </div>
+  </div>
+</body>
+</html>

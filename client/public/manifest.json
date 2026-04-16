@@ -1,0 +1,16 @@
+{
+  "name": "GeoHealth Medinapur",
+  "short_name": "GeoHealth",
+  "description": "Find hospitals and doctors in Paschim Medinipur — works offline",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/geoHealthLogo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/geoHealthLogo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["health", "medical", "navigation"],
+  "lang": "en-IN"
+}

@@ -835,13 +835,13 @@ exports.getCurrentlyAvailable = async (req, res) => {
                     d.specialization,
                     da.start_time,
                     da.end_time,
-                    ROUND(EXTRACT(EPOCH FROM (da.end_time - CURRENT_TIME)) / 60)
+                    ROUND(EXTRACT(EPOCH FROM (da.end_time - CURRENT_TIME::time)) / 60)
                                     AS remaining_minutes
                 FROM doctor_availability da
                 JOIN doctors d ON da.doctor_id = d.doctor_id
                 WHERE da.day_of_week = EXTRACT(ISODOW FROM CURRENT_DATE)::int
-                  AND da.start_time  <= CURRENT_TIME
-                  AND da.end_time    >  CURRENT_TIME
+                  AND da.start_time  <= CURRENT_TIME::time
+                  AND da.end_time    >  CURRENT_TIME::time
             ),
             hospital_summary AS (
                 SELECT

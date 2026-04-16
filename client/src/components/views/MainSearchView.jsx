@@ -1,8 +1,11 @@
+// =============================================================================
+//  src/components/views/MainSearchView.jsx
+// =============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Select from 'react-select';
-import { Siren, GitCompare, ScatterChart, X, CheckSquare, SlidersHorizontal } from 'lucide-react';
+import { Siren, GitCompare, ScatterChart, X, CheckSquare, SlidersHorizontal, MessageSquare } from 'lucide-react';
 
 import SearchBar             from '../common/SearchBar';
 import HospitalCard          from '../cards/HospitalCard';
@@ -12,6 +15,8 @@ import ComparePanel          from '../panels/ComparePanel';
 import TradeoffChart         from '../charts/TradeoffChart';
 import ParetoRecommendation  from '../common/ParetoRecommendation';
 import PreferencesModal      from '../modals/PreferencesModal';
+import OfflineStatusBanner   from '../common/OfflineStatusBanner';
+import SmsQueryModal         from '../modals/SmsQueryModal';
 import Loader                from '../common/Loader';
 
 import { compareHospitals }                    from '../../services/apiService';
@@ -77,7 +82,16 @@ const MainSearchView = ({
     const [showPreferences,  setShowPreferences]  = useState(false);
     const [prefApplied,      setPrefApplied]      = useState(false);
 
-    // ── Compare state ─────────────────────────────────────────────────────────
+    const [showSmsModal,    setShowSmsModal]    = useState(false);
+    const [isOnline,        setIsOnline]        = useState(navigator.onLine);
+
+    useEffect(() => {
+        const up   = () => setIsOnline(true);
+        const down = () => setIsOnline(false);
+        window.addEventListener('online',  up);
+        window.addEventListener('offline', down);
+        return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+    }, []);
     const [compareMode,      setCompareMode]      = useState(false);
     const [selectedIds,      setSelectedIds]      = useState(new Set());
     const [compareData,      setCompareData]      = useState([]);
@@ -307,6 +321,16 @@ const MainSearchView = ({
     return (
         <div className="p-4 h-full flex flex-col gap-3 overflow-hidden">
 
+            {/* ── Offline status banner ───────────────────────────── */}
+            {!isOnline && (
+                <OfflineStatusBanner
+                    isOnline={isOnline}
+                    isSyncing={false}
+                    cacheStatus={null}
+                    onSync={() => {}}
+                />
+            )}
+
             {/* ── Brand + search ─────────────────────── */}
             <div className="flex-shrink-0 space-y-3">
                 <div className="flex items-center gap-3">
@@ -429,6 +453,20 @@ const MainSearchView = ({
                         <ScatterChart size={12} /> Trade-off
                     </button>
 
+                    {/* SMS Query */}
+                    <button
+                        onClick={() => setShowSmsModal(true)}
+                        title="Query hospitals via SMS — works without internet"
+                        className={`flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150 ${
+                            !isOnline
+                                ? 'bg-orange-500 text-white border-orange-500 shadow-sm animate-pulse'
+                                : 'bg-white text-slate-600 border-slate-300 hover:border-indigo-400 hover:text-indigo-600'
+                        }`}
+                    >
+                        <MessageSquare size={12} />
+                        {!isOnline ? 'SMS Query !' : 'SMS'}
+                    </button>
+
                 </div>
 
                 <h2 className="text-base font-semibold text-slate-700">{searchTitle}</h2>
@@ -486,6 +524,13 @@ const MainSearchView = ({
                     hospitals={compareData}
                     isLoading={compareLoading}
                     onClose={handleCloseCompare}
+                />
+            )}
+
+            {showSmsModal && (
+                <SmsQueryModal
+                    userLocation={userLocation}
+                    onClose={() => setShowSmsModal(false)}
                 />
             )}
 

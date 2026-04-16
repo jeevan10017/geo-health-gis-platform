@@ -1,3 +1,6 @@
+// =============================================================================
+//  src/routes/api.js
+// =============================================================================
 
 const express  = require('express');
 const router   = express.Router();
@@ -6,6 +9,8 @@ const health   = require('../controllers/healthController');
 const decision = require('../controllers/decisionController');
 const debug    = require('../controllers/debugController');
 
+
+const sms      = require('../controllers/smsController');
 
 // ─── healthController ────────────────────────────────────────────────────────
 
@@ -36,6 +41,13 @@ router.get('/hospital-load',             decision.getHospitalLoadStatus);
 router.get('/debug/network-check',       debug.networkCheck);
 router.get('/debug/db-test',             debug.dbTest);
 router.get('/debug/ors-test',            debug.orsTest);
+
+// ─── SMS ──────────────────────────────────────────────────────────────────────
+
+router.post('/sms-webhook',              sms.handleSmsWebhook);
+router.get('/sms-webhook',               sms.handleSmsWebhook);
+router.get('/sms-test',                  sms.testSms);
+router.post('/sms/send',                 sms.sendSmsQuery);
 
 
 module.exports = router;

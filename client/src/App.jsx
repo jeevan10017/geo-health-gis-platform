@@ -1,3 +1,8 @@
+// =============================================================================
+//  App.jsx
+//  Mobile: bottom-sheet map drawer (always partially visible, drag to expand)
+//  Desktop: side-by-side with draggable resize handle
+// =============================================================================
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -8,6 +13,7 @@ import MapView            from './components/map/MapView';
 import MainSearchView     from './components/views/MainSearchView';
 import HospitalDetailView from './components/views/HospitalDetailView';
 import DoctorBookingModal from './components/modals/DoctorBookingModal';
+import SmsQueryModal      from './components/modals/SmsQueryModal';
 import NavigationView     from './components/views/NavigationView';
 import Loader             from './components/common/Loader';
 
@@ -48,7 +54,57 @@ function App() {
     const drawerStartY     = useRef(0);
     const drawerStartPct   = useRef(SNAP_FULL);
 
-    // ─── Load-status / compare / annotated ──────────────────────────────────
+    // ─── Offline detection → auto-open SMS modal ─────────────────────────────
+    const [showSmsModal,    setShowSmsModal]    = useState(false);
+    const [isOnline,        setIsOnline]        = useState(navigator.onLine);
+    const [smsQueue,        setSmsQueue]        = useState(() => {
+        try { return JSON.parse(localStorage.getItem('geohealth_sms_queue') || '[]'); }
+        catch { return []; }
+    });
+
+    useEffect(() => {
+        let offlineTimer = null;
+
+        const handleOffline = () => {
+            setIsOnline(false);
+            // Wait 3 seconds before showing modal (avoid false positives)
+            offlineTimer = setTimeout(() => {
+                setShowSmsModal(true);
+            }, 3000);
+        };
+
+        const handleOnline = () => {
+            setIsOnline(true);
+            clearTimeout(offlineTimer);
+            // Fire any queued SMS requests
+            const queue = JSON.parse(localStorage.getItem('geohealth_sms_queue') || '[]');
+            if (queue.length > 0) {
+                queue.forEach(async (item) => {
+                    try {
+                        const apiBase = import.meta.env.VITE_API_URL || '/api';
+                        await fetch(`${apiBase}/sms/send`, {
+                            method:  'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body:    JSON.stringify(item),
+                        });
+                        console.log('[SMS Queue] Sent queued request:', item.message);
+                    } catch (e) {
+                        console.warn('[SMS Queue] Failed to send:', e.message);
+                    }
+                });
+                localStorage.removeItem('geohealth_sms_queue');
+                setSmsQueue([]);
+            }
+        };
+
+        window.addEventListener('online',  handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            clearTimeout(offlineTimer);
+            window.removeEventListener('online',  handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
     const [loadStatusMap,      setLoadStatusMap]      = useState(new Map());
     const [compareHospitals,   setCompareHospitals]   = useState([]);
     const [annotatedHospitals, setAnnotatedHospitals] = useState([]);
@@ -79,13 +135,43 @@ function App() {
         return searchResults.find(h => h.hospital_id === parseInt(id)) ?? null;
     }, [selectedHospitalId, navigatingToHospitalId, searchResults]);
 
-    // ─── Geolocation ────────────────────────────────────────────────────────
+    // ─── Geolocation — works offline (GPS doesn't need internet) ───────────
     useEffect(() => {
+        // Try to restore last known location from localStorage instantly
+        const cached = localStorage.getItem('geohealth_last_location');
+        if (cached) {
+            try {
+                const { lat, lon } = JSON.parse(cached);
+                setUserLocation([lat, lon]); // set immediately so app renders
+            } catch (_) {}
+        }
+
+        if (!navigator.geolocation) {
+            setUserLocation([22.34, 87.31]);
+            return;
+        }
+
+        // GPS works offline — it uses device hardware, not internet
         navigator.geolocation.getCurrentPosition(
-            (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
-            ()    => {
-                setLocationError('Location access denied. Using a default location.');
-                setUserLocation([22.34, 87.31]);
+            (pos) => {
+                const loc = [pos.coords.latitude, pos.coords.longitude];
+                setUserLocation(loc);
+                // Cache for next offline load
+                localStorage.setItem('geohealth_last_location',
+                    JSON.stringify({ lat: loc[0], lon: loc[1], at: Date.now() }));
+            },
+            () => {
+                // If GPS fails and no cache, use Kharagpur center
+                if (!localStorage.getItem('geohealth_last_location')) {
+                    setLocationError('Location access denied. Using default.');
+                    setUserLocation([22.34, 87.31]);
+                }
+                // If GPS fails but we have cache, the cached location above is already set
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 8000,
+                maximumAge: 60000,   // accept a 1-min old GPS fix when offline
             }
         );
     }, []);
@@ -122,9 +208,36 @@ function App() {
                 } else {
                     data = await getInitialHospitals(userLocation[0], userLocation[1], radius);
                 }
-                setSearchResults(data);
+                setSearchResults(data ?? []);
+
             } catch (err) {
-                setError(err.message);
+                const isNetworkError =
+                    err?.code === 'ERR_NETWORK' ||
+                    err?.message?.includes('Network') ||
+                    err?.message?.includes('fetch') ||
+                    err?.message?.includes('ECONNABORTED') ||
+                    !navigator.onLine;
+
+                // Only use offline fallback for default hospitals view + network errors
+                if (isNetworkError && !isCurrentlyAvailable && !isEmergencyMode && !decisionMode && !query) {
+                    try {
+                        const { getOfflineHospitals } = await import('./utils/offlineStore.js');
+                        const cached = await getOfflineHospitals();
+                        if (cached.length > 0) {
+                            setSearchResults(cached);
+                            setError('');
+                            console.log(`[Offline] Loaded ${cached.length} cached hospitals`);
+                            return;
+                        }
+                    } catch (_) {}
+                    setError('You are offline. No cached data available. Connect to internet to load hospitals.');
+                } else if (isCurrentlyAvailable && isNetworkError) {
+                    // Special message for currently-available filter offline
+                    setError('Live doctor availability requires internet. Please connect.');
+                } else {
+                    // Real server error — show it
+                    setError(err?.response?.data?.error || err.message || 'Something went wrong.');
+                }
             } finally {
                 setIsLoading(false);
             }
@@ -470,6 +583,21 @@ function App() {
                     hospitalId={selectedHospitalId}
                     userLocation={userLocation}
                     onClose={closeModal}
+                />
+            )}
+
+            {/* SMS modal — auto-opens when offline, also opened from toolbar */}
+            {showSmsModal && (
+                <SmsQueryModal
+                    userLocation={userLocation}
+                    isOnline={isOnline}
+                    smsQueue={smsQueue}
+                    onQueueAdd={(item) => {
+                        const next = [...smsQueue, item];
+                        setSmsQueue(next);
+                        localStorage.setItem('geohealth_sms_queue', JSON.stringify(next));
+                    }}
+                    onClose={() => setShowSmsModal(false)}
                 />
             )}
         </div>
