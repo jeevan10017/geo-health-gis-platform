@@ -1,6 +1,3 @@
-// =============================================================================
-//  src/routes/api.js
-// =============================================================================
 
 const express  = require('express');
 const router   = express.Router();
@@ -11,6 +8,8 @@ const debug    = require('../controllers/debugController');
 
 
 const sms      = require('../controllers/smsController');
+
+const analytics = require('../controllers/analyticsController');
 
 // ─── healthController ────────────────────────────────────────────────────────
 
@@ -41,6 +40,14 @@ router.get('/hospital-load',             decision.getHospitalLoadStatus);
 router.get('/debug/network-check',       debug.networkCheck);
 router.get('/debug/db-test',             debug.dbTest);
 router.get('/debug/ors-test',            debug.orsTest);
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+router.get('/analytics/blackspots',          analytics.getBlackspots);
+router.get('/analytics/ambulance-placement', analytics.getAmbulancePlacements);
+router.post('/analytics/survival-score',     analytics.getSurvivalScore);
+router.post('/analytics/voice-query',        analytics.voiceQuery);
+
 
 // ─── SMS ──────────────────────────────────────────────────────────────────────
 

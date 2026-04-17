@@ -1,8 +1,3 @@
-// =============================================================================
-//  App.jsx
-//  Mobile: bottom-sheet map drawer (always partially visible, drag to expand)
-//  Desktop: side-by-side with draggable resize handle
-// =============================================================================
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -15,6 +10,9 @@ import HospitalDetailView from './components/views/HospitalDetailView';
 import DoctorBookingModal from './components/modals/DoctorBookingModal';
 import SmsQueryModal      from './components/modals/SmsQueryModal';
 import NavigationView     from './components/views/NavigationView';
+import BlackspotMap       from './components/analytics/BlackspotMap';
+import SurvivalScorePanel from './components/analytics/SurvivalScorePanel';
+import VoiceQueryButton   from './components/analytics/VoiceQueryButton';
 import Loader             from './components/common/Loader';
 
 import {
@@ -53,6 +51,10 @@ function App() {
     const drawerDragging   = useRef(false);
     const drawerStartY     = useRef(0);
     const drawerStartPct   = useRef(SNAP_FULL);
+
+    // ─── Analytics panels ─────────────────────────────────────────────────────
+    const [showBlackspots,  setShowBlackspots]  = useState(false);
+    const [showSurvival,    setShowSurvival]    = useState(false);
 
     // ─── Offline detection → auto-open SMS modal ─────────────────────────────
     const [showSmsModal,    setShowSmsModal]    = useState(false);
@@ -425,6 +427,9 @@ function App() {
                 onEmergencyToggle={handleEmergencyToggle}
                 isCurrentlyAvailable={isCurrentlyAvailable}
                 onCurrentlyAvailableToggle={handleCurrentlyAvailableToggle}
+                onShowBlackspots={() => setShowBlackspots(true)}
+                onShowSurvival={() => setShowSurvival(true)}
+                onShowSms={() => setShowSmsModal(true)}
                 loadStatusMap={loadStatusMap}
                 onCompareHospitalsChange={setCompareHospitals}
                 onAnnotatedChange={setAnnotatedHospitals}
@@ -598,6 +603,28 @@ function App() {
                         localStorage.setItem('geohealth_sms_queue', JSON.stringify(next));
                     }}
                     onClose={() => setShowSmsModal(false)}
+                />
+            )}
+
+            {/* Blackspot heatmap */}
+            {showBlackspots && (
+                <BlackspotMap onClose={() => setShowBlackspots(false)} />
+            )}
+
+            {/* Survival-aware emergency routing */}
+            {showSurvival && (
+                <SurvivalScorePanel
+                    userLocation={userLocation}
+                    onHospitalSelect={handleHospitalSelect}
+                    onClose={() => setShowSurvival(false)}
+                />
+            )}
+
+            {/* Voice query floating button */}
+            {userLocation && (
+                <VoiceQueryButton
+                    userLocation={userLocation}
+                    onHospitalSelect={handleHospitalSelect}
                 />
             )}
         </div>

@@ -1,6 +1,3 @@
-// =============================================================================
-//  src/components/views/MainSearchView.jsx
-// =============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -69,6 +66,9 @@ const MainSearchView = ({
     onEmergencyToggle,
     isCurrentlyAvailable,
     onCurrentlyAvailableToggle,
+    onShowBlackspots,
+    onShowSurvival,
+    onShowSms,
     loadStatusMap,
     onCompareHospitalsChange,
     onAnnotatedChange,          // lift annotated results to App → MapView
@@ -455,8 +455,8 @@ const MainSearchView = ({
 
                     {/* SMS Query */}
                     <button
-                        onClick={() => setShowSmsModal(true)}
-                        title="Query hospitals via SMS — works without internet"
+                        onClick={onShowSms ?? (() => setShowSmsModal(true))}
+                        title="Query hospitals via SMS"
                         className={`flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150 ${
                             !isOnline
                                 ? 'bg-orange-500 text-white border-orange-500 shadow-sm animate-pulse'
@@ -464,7 +464,25 @@ const MainSearchView = ({
                         }`}
                     >
                         <MessageSquare size={12} />
-                        {!isOnline ? 'SMS Query !' : 'SMS'}
+                        {!isOnline ? 'SMS !' : 'SMS'}
+                    </button>
+
+                    {/* Blackspot map */}
+                    <button
+                        onClick={onShowBlackspots}
+                        title="Healthcare blackspot heatmap"
+                        className="flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border bg-white text-slate-600 border-slate-300 hover:border-red-400 hover:text-red-600 transition-all duration-150"
+                    >
+                        🗺️ Blackspots
+                    </button>
+
+                    {/* Survival routing */}
+                    <button
+                        onClick={onShowSurvival}
+                        title="Survival-aware emergency routing"
+                        className="flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border bg-red-50 text-red-700 border-red-300 hover:bg-red-100 transition-all duration-150"
+                    >
+                        ❤️ Survival Route
                     </button>
 
                 </div>
