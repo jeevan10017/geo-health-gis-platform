@@ -67,8 +67,9 @@ const MainSearchView = ({
     isCurrentlyAvailable,
     onCurrentlyAvailableToggle,
     onShowBlackspots,
-    onShowSurvival,
+    onShowAdvancedPareto,
     onShowSms,
+    advancedParetoData = [],
     loadStatusMap,
     onCompareHospitalsChange,
     onAnnotatedChange,          // lift annotated results to App → MapView
@@ -105,22 +106,41 @@ const MainSearchView = ({
     // Decision-mode and emergency have their own explicit sort; don't overlay Pareto there.
     const shouldAnnotate = !isEmergencyMode && !decisionMode && !isCurrentlyAvailable;
 
+    // Merge AdvancedPareto composite scores into hospitals when available
+    const mergedResults = useMemo(() => {
+        if (!advancedParetoData.length || !searchResults?.length) return searchResults;
+        const rankMap = new Map(advancedParetoData.map(h => [h.hospital_id, h]));
+        return searchResults.map(h => {
+            const ranked = rankMap.get(h.hospital_id);
+            if (!ranked) return h;
+            return {
+                ...h,
+                success_probability: ranked.success_probability ?? h.success_probability,
+                survival_score:      ranked.survival_score      ?? h.survival_score,
+                _composite:          ranked._composite          ?? null,
+            };
+        });
+    }, [searchResults, advancedParetoData]);
+
     const annotated = useMemo(() => {
-        if (!searchResults?.length) return searchResults;
+        if (!mergedResults?.length) return mergedResults;
         if (!shouldAnnotate) {
-            // Strip any stale pareto flags, just pass through as-is
-            return searchResults.map(h => ({
+            return mergedResults.map(h => ({
                 ...h, isPareto: false, isTopChoice: false, paretoScore: null
             }));
         }
-        const scored = annotateWithPareto(searchResults, weights);
-        // Add 1-based paretoRank (rank within Pareto front by score, null for non-Pareto)
+        const scored = annotateWithPareto(mergedResults, weights);
         const frontSorted = scored
             .filter(h => h.isPareto)
-            .sort((a, b) => b.paretoScore - a.paretoScore);
+            .sort((a, b) => {
+                // If Advanced Pareto Optimal data available, sort by composite; else by paretoScore
+                const aScore = a._composite ?? a.paretoScore ?? 0;
+                const bScore = b._composite ?? b.paretoScore ?? 0;
+                return bScore - aScore;
+            });
         const rankMap = new Map(frontSorted.map((h, i) => [h.hospital_id, i + 1]));
         return scored.map(h => ({ ...h, paretoRank: rankMap.get(h.hospital_id) ?? null }));
-    }, [searchResults, weights, shouldAnnotate]);
+    }, [mergedResults, weights, shouldAnnotate]);
 
     const topChoice   = useMemo(() =>
         shouldAnnotate ? (annotated.find(h => h.isTopChoice) ?? null) : null,
@@ -476,13 +496,13 @@ const MainSearchView = ({
                         🗺️ Blackspots
                     </button>
 
-                    {/* Survival routing */}
+                    {/* Advanced Pareto Optimal — unified: Survival + Monte Carlo + Pareto + Multi-Agent */}
                     <button
-                        onClick={onShowSurvival}
-                        title="Survival-aware emergency routing"
-                        className="flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border bg-red-50 text-red-700 border-red-300 hover:bg-red-100 transition-all duration-150"
+                        onClick={onShowAdvancedPareto}
+                        title="Advanced Pareto Optimal: Survival + Monte Carlo + 6D Pareto fused score"
+                        className="flex items-center gap-1 flex-shrink-0 px-2.5 py-1.5 rounded-full text-xs font-semibold border bg-gradient-to-r from-indigo-500 to-green-500 text-white border-indigo-500 shadow-sm hover:opacity-90 transition-all duration-150"
                     >
-                        ❤️ Survival Route
+                        ⭐ Advanced Pareto
                     </button>
 
                 </div>

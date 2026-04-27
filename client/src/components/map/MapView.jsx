@@ -52,12 +52,26 @@ function RouteInfoPanel({ routeData, hospital }) {
         const distKm   = routeData.total_distance_m
             ? (routeData.total_distance_m / 1000).toFixed(1)
             : ((hospital.route_distance_meters ?? 0) / 1000).toFixed(1);
-        const method   = routeData.routing_method;
-        const methodBadge = method === 'ors'
-            ? `<span style="background:#dcfce7;color:#15803d;font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px;border:1px solid #86efac;">ORS</span>`
-            : method === 'pgrouting'
-            ? `<span style="background:#e0e7ff;color:#4338ca;font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px;border:1px solid #a5b4fc;">pgRoute</span>`
-            : '';
+        const method   = routeData.routing_method ?? '';
+
+        const METHOD_META = {
+            'ors':           { label: 'ORS',            bg: '#dcfce7', color: '#15803d', border: '#86efac', title: 'OpenRouteService — terrain & speed aware' },
+            'bdAstar_time':  { label: 'A★ Bidir',       bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc', title: 'Bidirectional A* — speed-based (fastest)' },
+            'bdAstar_dist':  { label: 'A★ Bidir',       bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc', title: 'Bidirectional A* — distance-based' },
+            'dijkstra_time': { label: 'Dijkstra',        bg: '#fef3c7', color: '#92400e', border: '#fcd34d', title: 'Dijkstra — speed-based' },
+            'dijkstra_dist': { label: 'Dijkstra',        bg: '#fef3c7', color: '#92400e', border: '#fcd34d', title: 'Dijkstra — distance-based' },
+            'ch_bdAstar':    { label: 'CH A★',           bg: '#f3e8ff', color: '#6b21a8', border: '#d8b4fe', title: 'Contraction Hierarchies + A* — fastest' },
+            'ch_offline':    { label: 'CH Offline',      bg: '#fff7ed', color: '#9a3412', border: '#fdba74', title: 'Offline CH routing — client-side graph' },
+            'time_based':    { label: 'A★ Bidir',        bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc', title: 'Bidirectional A* — speed-based' },
+            'distance_based':{ label: 'A★ Dist',         bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc', title: 'Bidirectional A* — distance-based' },
+            'osrm':          { label: 'OSRM',            bg: '#fef9c3', color: '#854d0e', border: '#fde047', title: 'OSRM — standard road routing' },
+            'cached':        { label: '📦 Cached',       bg: '#f0fdf4', color: '#166534', border: '#86efac', title: 'Cached route from previous session' },
+            'pgrouting':     { label: 'A★ Bidir',        bg: '#e0e7ff', color: '#4338ca', border: '#a5b4fc', title: 'Bidirectional A* routing' },
+        };
+
+        const m = METHOD_META[method] ?? { label: method || '—', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1', title: '' };
+
+        const methodBadge = `<span title="${m.title}" style="background:${m.bg};color:${m.color};font-size:9px;font-weight:700;padding:2px 6px;border-radius:20px;border:1px solid ${m.border};cursor:default;">${m.label}</span>`;
 
         // Speed color legend inline
         const legend = method === 'ors'
@@ -144,8 +158,14 @@ const SmartRoutingLayer = ({ userLocation, hospital, onRouteData }) => {
 
             const geoJSON = pgData.geometry ?? pgData;
             if (!geoJSON) return;
-            const resolved = { geometry: geoJSON, routing_method: 'pgrouting',
-                total_time_minutes: pgData.total_time_minutes, total_distance_m: pgData.total_distance_m };
+            // Use the routing_method returned by the server (bdAstar_time / dijkstra_time)
+            // Fall back to 'bdAstar_time' since we replaced pgr_dijkstra with pgr_bdAstar
+            const resolved = {
+                geometry:           geoJSON,
+                routing_method:     pgData.routing_method ?? 'bdAstar_time',
+                total_time_minutes: pgData.total_time_minutes,
+                total_distance_m:   pgData.total_distance_m,
+            };
             setRouteData(resolved);
             onRouteData?.(resolved);
             setRouteKey(k => k + 1);
@@ -438,10 +458,18 @@ function RoutingToggleControl({ routingMode, setRoutingMode }) {
         const dbSvg     = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`;
 
         const update = (mode) => {
-            container.innerHTML = `<div style="display:flex;align-items:center;gap:8px;" class="text-sm font-semibold text-slate-700" title="${mode === 'osrm' ? 'Frontend Routing (OSRM)' : 'Backend Routing (pgRouting)'}">
-                ${mode === 'osrm' ? mapPinSvg : dbSvg}
-                <span>${mode === 'osrm' ? 'OSRM' : 'pgRouting'}</span>
-            </div>`;
+            const label = mode === 'osrm'
+                ? { icon: mapPinSvg, text: 'OSRM',        title: 'OSRM — standard frontend routing' }
+                : { icon: dbSvg,    text: 'Bidir A★ + CH', title: 'Bidirectional A* + Contraction Hierarchies (server)' };
+            container.innerHTML = `
+                <div style="display:flex;align-items:center;gap:7px;cursor:pointer;" title="${label.title}">
+                    ${label.icon}
+                    <div>
+                        <div style="font-size:11px;font-weight:700;color:#334155;">${label.text}</div>
+                        <div style="font-size:9px;color:#64748b;">${mode === 'osrm' ? 'Click for server routing' : 'Click for OSRM routing'}</div>
+                    </div>
+                </div>
+            `;
         };
         update(routingMode);
 
@@ -690,11 +718,20 @@ function MapView({
                                 <div className="text-xs">
                                     ~{Math.round(actualRouteData?.total_time_minutes ?? hospital.travel_time_minutes)} min /&nbsp;
                                     {((actualRouteData?.total_distance_m ?? hospital.route_distance_meters ?? 0) / 1000).toFixed(1)} km
-                                    {actualRouteData && (
-                                        <span className="ml-1 text-[9px] text-indigo-500 font-semibold">
-                                            {actualRouteData.routing_method === 'ors' ? '(ORS)' : '(pgR)'}
-                                        </span>
-                                    )}
+                                    {actualRouteData && (() => {
+                                        const m = actualRouteData.routing_method ?? '';
+                                        const badge =
+                                            m === 'ors'           ? { text: 'ORS',      cls: 'text-emerald-600' } :
+                                            m.includes('ch')      ? { text: 'CH A★',    cls: 'text-purple-600'  } :
+                                            m.includes('bdAstar') || m.includes('time') || m.includes('dist') || m === 'pgrouting'
+                                                                  ? { text: 'Bidir A★', cls: 'text-indigo-500'  } :
+                                            m === 'osrm'          ? { text: 'OSRM',     cls: 'text-amber-600'   } :
+                                            m === 'cached'        ? { text: 'Cached',   cls: 'text-green-600'   } :
+                                            null;
+                                        return badge ? (
+                                            <span className={`ml-1 text-[9px] font-bold ${badge.cls}`}>({badge.text})</span>
+                                        ) : null;
+                                    })()}
                                 </div>
                             </div>
                         </Tooltip>

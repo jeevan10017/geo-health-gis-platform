@@ -1,34 +1,82 @@
 
-//  Web Speech API requires HTTPS + Chrome/Edge on Android.
-//  "network" error = browser can't reach Google Speech servers
-//  (HTTP page, old Android, VPN blocking speech.googleapis.com)
-//
-//  Fallback: text input with same NLP pipeline
-// =============================================================================
-
-import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Volume2, X, AlertTriangle, Send, ChevronDown } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Mic, MicOff, Volume2, VolumeX, X, Send, AlertTriangle } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-const QUICK_COMMANDS = [
+// ─── TTS hook — exported for use in NavigationView too ────────────────────────
+
+export const useTTS = () => {
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [enabled,    setEnabled]    = useState(
+        () => localStorage.getItem('geohealth_tts') !== 'off'
+    );
+
+    const speak = useCallback((text, lang = 'en-IN') => {
+        if (!enabled || !window.speechSynthesis || !text) return;
+        window.speechSynthesis.cancel();
+
+        const utt  = new SpeechSynthesisUtterance(text);
+        utt.lang   = lang;
+        utt.rate   = 0.92;
+        utt.pitch  = 1.0;
+        utt.volume = 1.0;
+
+        // Pick best available voice for Indian English
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v =>
+            v.lang === 'en-IN' || v.lang === 'en-GB' || v.name.includes('Google')
+        );
+        if (preferred) utt.voice = preferred;
+
+        utt.onstart = () => setIsSpeaking(true);
+        utt.onend   = () => setIsSpeaking(false);
+        utt.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utt);
+    }, [enabled]);
+
+    const stop = useCallback(() => {
+        window.speechSynthesis?.cancel();
+        setIsSpeaking(false);
+    }, []);
+
+    const toggle = useCallback(() => {
+        setEnabled(v => {
+            const next = !v;
+            localStorage.setItem('geohealth_tts', next ? 'on' : 'off');
+            if (!next) window.speechSynthesis?.cancel();
+            return next;
+        });
+    }, []);
+
+    return { speak, stop, isSpeaking, enabled, toggle };
+};
+
+// ─── Quick commands ────────────────────────────────────────────────────────────
+
+const QUICK = [
     { label: '🚨 Emergency',    text: 'emergency nearest hospital' },
-    { label: '❤️ Heart Attack', text: 'heart attack hospital'      },
+    { label: '❤️ Heart',        text: 'heart attack hospital'      },
     { label: '🦴 Accident',     text: 'accident fracture hospital'  },
-    { label: '🧠 Stroke',       text: 'stroke neurology doctor'     },
-    { label: '👶 Pediatrics',   text: 'child doctor nearest'        },
+    { label: '🧠 Stroke',       text: 'stroke neurology hospital'   },
+    { label: '👶 Child',        text: 'child pediatrics doctor'     },
     { label: '👩 Pregnancy',    text: 'pregnancy gynaecology'       },
 ];
 
-// Detect if speech will likely work
-const speechLikelyWorks = () => {
-    const hasAPI     = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
-    const isSecure   = location.protocol === 'https:' || location.hostname === 'localhost';
-    const isChrome   = /Chrome/.test(navigator.userAgent) && !/Edg/.test(navigator.userAgent)
-                    || /SamsungBrowser/.test(navigator.userAgent)
-                    || 'webkitSpeechRecognition' in window;
-    return hasAPI && isSecure && isChrome;
+// ─── Recognition engine ───────────────────────────────────────────────────────
+
+const createRecognition = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const r = new SR();
+    r.lang           = 'en-IN';
+    r.continuous     = false;
+    r.interimResults = true;
+    r.maxAlternatives = 3;
+    return r;
 };
+
+// ─── Main component ────────────────────────────────────────────────────────────
 
 const VoiceQueryButton = ({ userLocation, onHospitalSelect }) => {
     const [showPanel,   setShowPanel]   = useState(false);
@@ -36,32 +84,25 @@ const VoiceQueryButton = ({ userLocation, onHospitalSelect }) => {
     const [transcript,  setTranscript]  = useState('');
     const [textInput,   setTextInput]   = useState('');
     const [response,    setResponse]    = useState(null);
-    const [isSpeaking,  setIsSpeaking]  = useState(false);
+    const [status,      setStatus]      = useState('');  // user-friendly status
     const [error,       setError]       = useState('');
-    const [useText,     setUseText]     = useState(!speechLikelyWorks());
-    const [promptIdx,   setPromptIdx]   = useState(0);
-    const recognitionRef = useRef(null);
-    const inputRef       = useRef(null);
+    const { speak, stop, isSpeaking, enabled, toggle } = useTTS();
 
+    const recRef   = useRef(null);
+    const inputRef = useRef(null);
+
+    // Pre-load voices (Chrome async)
     useEffect(() => {
-        const t = setInterval(() => setPromptIdx(i => (i + 1) % QUICK_COMMANDS.length), 3000);
-        return () => clearInterval(t);
+        window.speechSynthesis?.getVoices();
+        window.speechSynthesis?.addEventListener('voiceschanged', () => {});
     }, []);
 
-    const speak = (text) => {
-        if (!window.speechSynthesis) return;
-        window.speechSynthesis.cancel();
-        const utt  = new SpeechSynthesisUtterance(text);
-        utt.lang   = 'en-IN';
-        utt.rate   = 0.92;
-        utt.onstart = () => setIsSpeaking(true);
-        utt.onend   = () => setIsSpeaking(false);
-        window.speechSynthesis.speak(utt);
-    };
+    // ── Query backend ─────────────────────────────────────────────────────────
 
-    const processVoice = async (text) => {
+    const processQuery = useCallback(async (text) => {
         if (!text?.trim()) return;
         setError('');
+        setStatus('Searching hospitals…');
         try {
             const res  = await fetch(`${API}/analytics/voice-query`, {
                 method:  'POST',
@@ -74,182 +115,192 @@ const VoiceQueryButton = ({ userLocation, onHospitalSelect }) => {
             });
             const data = await res.json();
             setResponse(data);
-            if (data.response_text) setTimeout(() => speak(data.response_text), 300);
+            setStatus('');
+            if (data.response_text) setTimeout(() => speak(data.response_text), 200);
         } catch {
-            setError('Could not query hospitals. Check your internet.');
+            setError('Could not reach server. Check internet.');
+            setStatus('');
         }
-    };
+    }, [userLocation, speak]);
 
-    const handleTextSubmit = (text) => {
-        const q = (text || textInput).trim();
-        if (!q) return;
-        setTranscript(q);
-        setTextInput('');
-        processVoice(q);
-    };
+    // ── Start mic ─────────────────────────────────────────────────────────────
 
-    const startListening = () => {
-        // If speech not available or previously failed, use text
-        if (useText) { setShowPanel(true); return; }
-
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) { setUseText(true); setShowPanel(true); return; }
-
-        setShowPanel(true);
+    const startListening = useCallback(async () => {
         setTranscript('');
         setResponse(null);
         setError('');
 
-        const recognition = new SR();
-        recognitionRef.current = recognition;
-        recognition.lang           = 'en-IN';
-        recognition.continuous     = false;
-        recognition.interimResults = true;
+        // Check microphone permission first
+        try {
+            await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch {
+            setError('Microphone permission denied. Use text input below.');
+            setShowPanel(true);
+            return;
+        }
 
-        recognition.onstart  = () => setIsListening(true);
-        recognition.onend    = () => setIsListening(false);
+        const recognition = createRecognition();
+
+        if (!recognition) {
+            setError('');
+            setShowPanel(true);
+            return;
+        }
+
+        recRef.current = recognition;
+        setShowPanel(true);
+
+        let finalTranscript = '';
+        let networkRetries  = 0;
+
+        recognition.onstart  = () => { setIsListening(true); setStatus('Listening…'); };
+        recognition.onend    = () => {
+            setIsListening(false);
+            setStatus(finalTranscript ? '' : '');
+            if (finalTranscript) processQuery(finalTranscript);
+        };
 
         recognition.onresult = (event) => {
-            const text = Array.from(event.results).map(r => r[0].transcript).join('');
-            setTranscript(text);
-            if (event.results[event.results.length - 1].isFinal) processVoice(text);
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const t = event.results[i][0].transcript;
+                if (event.results[i].isFinal) finalTranscript += t;
+                else interim += t;
+            }
+            setTranscript(finalTranscript || interim);
         };
 
         recognition.onerror = (e) => {
             setIsListening(false);
-            if (e.error === 'not-allowed') {
-                setError('Microphone blocked. Allow microphone permission and try again.');
-                setUseText(true);
+            if (e.error === 'network' && networkRetries < 2) {
+                // Retry up to 2 times — sometimes transient
+                networkRetries++;
+                setStatus(`Retrying… (${networkRetries}/2)`);
+                setTimeout(() => {
+                    try { recognition.start(); }
+                    catch { setStatus(''); setError('Voice unavailable. Use text below.'); }
+                }, 800);
             } else if (e.error === 'network') {
-                // Speech API needs HTTPS + Google servers
-                setError('');
-                setUseText(true);  // silently switch to text mode
+                setStatus('');
+                setError('Voice requires internet access to speech servers. Use text input below — it works the same way.');
+            } else if (e.error === 'not-allowed') {
+                setError('Microphone blocked. Go to browser Settings → Site permissions → Microphone → Allow.');
             } else if (e.error === 'no-speech') {
-                setError('No speech detected. Tap mic again or type below.');
+                setStatus('');
+                setError('Nothing heard. Tap mic again and speak clearly.');
+            } else if (e.error === 'aborted') {
+                setStatus('');
             } else {
-                setError(`Mic error: ${e.error}. Using text mode.`);
-                setUseText(true);
+                setError(`Voice error: ${e.error}. Use text input below.`);
             }
         };
 
-        try { recognition.start(); }
-        catch { setUseText(true); }
-    };
+        try {
+            recognition.start();
+        } catch (err) {
+            setError('Could not start microphone. Use text input below.');
+        }
+    }, [processQuery]);
 
-    const stopListening = () => {
-        recognitionRef.current?.stop();
+    const stopListening = useCallback(() => {
+        recRef.current?.stop();
         setIsListening(false);
+        setStatus('');
+    }, []);
+
+    const handleText = (txt) => {
+        const q = (txt ?? textInput).trim();
+        if (!q) return;
+        setTranscript(q);
+        setTextInput('');
+        processQuery(q);
     };
 
     return (
         <>
-            {/* Floating mic / keyboard button */}
+            {/* Floating button */}
             <button
                 onClick={isListening ? stopListening : startListening}
-                title={useText ? 'Voice query (text mode)' : 'Speak to find hospitals'}
+                title="Voice / text hospital query"
                 className={`
                     fixed bottom-20 right-4 z-40 md:bottom-6
-                    w-14 h-14 rounded-full shadow-xl
-                    flex items-center justify-center transition-all duration-200
-                    ${isListening
-                        ? 'bg-red-500 scale-110 animate-pulse'
-                        : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'}
+                    w-14 h-14 rounded-full shadow-xl flex items-center justify-center
+                    transition-all duration-200 select-none
+                    ${isListening ? 'bg-red-500 scale-110' : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'}
                 `}
             >
                 {isListening
                     ? <MicOff size={22} className="text-white" />
-                    : useText
-                    ? <span className="text-white text-xl">🎙️</span>
                     : <Mic size={22} className="text-white" />
                 }
-                {isListening && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-300 rounded-full animate-ping" />}
+                {isListening && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-300 rounded-full animate-ping" />}
             </button>
 
-            {/* Panel */}
             {showPanel && (
                 <div className="fixed bottom-36 right-4 z-40 md:bottom-24 w-80 bg-white rounded-2xl shadow-2xl border overflow-hidden">
 
                     {/* Header */}
-                    <div className={`px-4 py-2.5 flex items-center justify-between ${isListening ? 'bg-red-50' : 'bg-indigo-50'}`}>
+                    <div className={`px-3 py-2.5 flex items-center justify-between ${isListening ? 'bg-red-50' : 'bg-indigo-50'}`}>
                         <div className="flex items-center gap-2">
-                            {useText
-                                ? <span className="text-base">🎙️</span>
-                                : isListening
-                                ? <Mic size={15} className="text-red-600 animate-pulse" />
-                                : <Volume2 size={15} className="text-indigo-600" />
-                            }
+                            <Mic size={14} className={isListening ? 'text-red-600 animate-pulse' : 'text-indigo-600'} />
                             <p className="font-bold text-sm text-slate-800">
-                                {isListening ? 'Listening…' : isSpeaking ? 'Speaking…' : 'Voice/Text Query'}
+                                {status || (isListening ? 'Listening…' : isSpeaking ? 'Speaking…' : 'Find Hospital')}
                             </p>
-                            {useText && !isListening && (
-                                <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">TEXT MODE</span>
-                            )}
                         </div>
-                        <button onClick={() => { stopListening(); setShowPanel(false); window.speechSynthesis?.cancel(); }}
-                            className="p-1 rounded-full hover:bg-slate-200"><X size={13} /></button>
+                        <div className="flex items-center gap-1">
+                            <button onClick={toggle} title={enabled ? 'Mute voice' : 'Unmute voice'}
+                                className="p-1 rounded-full hover:bg-slate-100">
+                                {enabled ? <Volume2 size={14} className="text-indigo-500" /> : <VolumeX size={14} className="text-slate-400" />}
+                            </button>
+                            <button onClick={() => { stopListening(); stop(); setShowPanel(false); }}
+                                className="p-1 rounded-full hover:bg-slate-100"><X size={14} /></button>
+                        </div>
                     </div>
 
                     <div className="p-3 space-y-2.5">
 
-                        {/* Quick command buttons */}
+                        {/* Quick tap */}
                         {!transcript && !response && (
-                            <div>
-                                <p className="text-[10px] text-slate-400 mb-1.5 font-semibold uppercase tracking-wide">Quick select:</p>
-                                <div className="grid grid-cols-2 gap-1">
-                                    {QUICK_COMMANDS.map(c => (
-                                        <button
-                                            key={c.text}
-                                            onClick={() => { setTranscript(c.text); processVoice(c.text); }}
-                                            className="text-xs px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 text-left font-medium transition-all"
-                                        >
-                                            {c.label}
-                                        </button>
-                                    ))}
-                                </div>
+                            <div className="grid grid-cols-2 gap-1">
+                                {QUICK.map(c => (
+                                    <button key={c.text} onClick={() => { setTranscript(c.text); processQuery(c.text); }}
+                                        className="text-xs px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 text-left font-medium transition-all">
+                                        {c.label}
+                                    </button>
+                                ))}
                             </div>
                         )}
 
-                        {/* Voice waveform */}
+                        {/* Waveform when listening */}
                         {isListening && (
-                            <div className="flex items-center justify-center gap-1 py-3">
-                                {[...Array(7)].map((_, i) => (
-                                    <div
-                                        key={i}
-                                        className="w-1 bg-red-500 rounded-full"
-                                        style={{
-                                            height: `${12 + Math.sin(i * 0.8) * 10}px`,
-                                            animation: `bounce ${0.4 + i * 0.07}s ease-in-out infinite alternate`,
-                                        }}
-                                    />
+                            <div className="flex items-end justify-center gap-0.5 h-10 px-4">
+                                {[...Array(12)].map((_, i) => (
+                                    <div key={i} className="w-1.5 bg-red-500 rounded-full"
+                                        style={{ height: `${25 + Math.sin(Date.now() / 200 + i) * 15}px`,
+                                                 animation: `soundbar ${0.3 + i * 0.05}s ease-in-out infinite alternate` }} />
                                 ))}
-                                <style>{`@keyframes bounce { from { transform: scaleY(0.4); } to { transform: scaleY(1.2); } }`}</style>
+                                <style>{`@keyframes soundbar{from{transform:scaleY(.3)}to{transform:scaleY(1)}}`}</style>
                             </div>
                         )}
 
                         {/* Transcript */}
-                        {transcript && (
-                            <div className="bg-slate-50 rounded-xl px-3 py-2 border">
-                                <p className="text-[10px] text-slate-400 mb-0.5">Query:</p>
-                                <p className="text-sm font-semibold text-slate-800">"{transcript}"</p>
+                        {transcript && !isListening && (
+                            <div className="bg-slate-50 rounded-xl px-3 py-2 border text-xs">
+                                <span className="text-slate-400">Query: </span>
+                                <span className="font-semibold text-slate-800">"{transcript}"</span>
                             </div>
                         )}
 
-                        {/* Text input fallback — always shown */}
+                        {/* Text input — always visible */}
                         <div className="flex gap-1.5">
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                value={textInput}
+                            <input ref={inputRef} type="text" value={textInput}
                                 onChange={e => setTextInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleTextSubmit()}
-                                placeholder="Type: heart attack, nearest hospital…"
-                                className="flex-grow text-xs border rounded-lg px-2.5 py-2 outline-none focus:ring-2 focus:ring-indigo-400"
-                            />
-                            <button
-                                onClick={() => handleTextSubmit()}
+                                onKeyDown={e => e.key === 'Enter' && handleText()}
+                                placeholder="Type: heart attack, emergency…"
+                                className="flex-grow text-xs border rounded-lg px-2.5 py-2 outline-none focus:ring-2 focus:ring-indigo-400" />
+                            <button onClick={() => handleText()}
                                 disabled={!textInput.trim()}
-                                className="px-2.5 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-40 hover:bg-indigo-700"
-                            >
+                                className="px-2.5 bg-indigo-600 text-white rounded-lg disabled:opacity-40 hover:bg-indigo-700">
                                 <Send size={13} />
                             </button>
                         </div>
@@ -257,7 +308,7 @@ const VoiceQueryButton = ({ userLocation, onHospitalSelect }) => {
                         {error && (
                             <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg p-2 text-xs text-amber-800">
                                 <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
-                                {error}
+                                <span>{error}</span>
                             </div>
                         )}
 
@@ -265,7 +316,7 @@ const VoiceQueryButton = ({ userLocation, onHospitalSelect }) => {
                         {response?.hospital && (
                             <div className="bg-green-50 border border-green-200 rounded-xl p-3">
                                 <p className="text-[10px] font-bold text-green-700 mb-1">
-                                    🏥 Best match — {response.hospital.survival_score}% survival score
+                                    🏥 Best match · {response.hospital.survival_score}% survival
                                 </p>
                                 <p className="font-bold text-slate-800 text-sm">{response.hospital.hospital_name}</p>
                                 <div className="flex items-center gap-3 text-xs text-slate-600 mt-1">
@@ -276,31 +327,23 @@ const VoiceQueryButton = ({ userLocation, onHospitalSelect }) => {
                                 <div className="flex gap-1.5 mt-2">
                                     <button
                                         onClick={() => { onHospitalSelect?.(response.hospital.hospital_id); setShowPanel(false); }}
-                                        className="flex-1 text-xs bg-green-600 text-white rounded-lg py-1.5 font-semibold hover:bg-green-700"
-                                    >
+                                        className="flex-1 text-xs bg-green-600 text-white rounded-lg py-1.5 font-semibold hover:bg-green-700">
                                         Navigate
                                     </button>
-                                    <button
-                                        onClick={() => speak(response.response_text)}
-                                        className="px-2.5 text-xs border border-green-300 text-green-700 rounded-lg hover:bg-green-50"
-                                    >
+                                    <button onClick={() => speak(response.response_text)}
+                                        className="px-2.5 text-xs border border-green-300 text-green-700 rounded-lg hover:bg-green-50">
                                         <Volume2 size={13} />
                                     </button>
                                 </div>
                             </div>
                         )}
 
-                        {/* Mic button (only if speech likely works) */}
-                        {!useText && (
-                            <button
-                                onClick={isListening ? stopListening : startListening}
-                                className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl font-semibold text-sm transition-all ${
-                                    isListening ? 'bg-red-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                }`}
-                            >
-                                {isListening ? <><MicOff size={15} /> Stop</> : <><Mic size={15} /> Speak</>}
-                            </button>
-                        )}
+                        {/* Mic button */}
+                        <button onClick={isListening ? stopListening : startListening}
+                            className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl font-semibold text-sm transition-all ${
+                                isListening ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                            {isListening ? <><MicOff size={15} /> Stop</> : <><Mic size={15} /> Tap & Speak</>}
+                        </button>
                     </div>
                 </div>
             )}

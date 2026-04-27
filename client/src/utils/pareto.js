@@ -1,10 +1,20 @@
+// =============================================================================
+
+//  A hospital H1 DOMINATES H2 if H1 is at least as good as H2 in every
+//  dimension and strictly better in at least one.
+//  The PARETO FRONT is the set of hospitals not dominated by anyone else.
+//  From the Pareto front, a weighted score picks the single "best" match
+//  for the user's stated priorities.
+// =============================================================================
+
 
 export const DEFAULT_WEIGHTS = {
-    distance:  0.30,   // lower  = better
-    waitTime:  0.25,   // lower  = better
-    rating:    0.25,   // higher = better
-    cost:      0.10,   // lower  = better
-    beds:      0.10,   // higher = better
+    distance:    0.25,   // lower  = better
+    waitTime:    0.20,   // lower  = better
+    rating:      0.20,   // higher = better
+    cost:        0.10,   // lower  = better
+    beds:        0.10,   // higher = better
+    probability: 0.15,   // higher = better  ← new: Monte Carlo success probability
 };
 
 // ─── Normalise a raw value into [0, 1] (higher = better after inversion) ─────
@@ -18,11 +28,12 @@ const normalise = (value, min, max, lowerIsBetter) => {
 // ─── Extract numeric dimensions from a hospital object ───────────────────────
 
 const dims = (h) => ({
-    distance: parseFloat(h.route_distance_meters ?? h.distance_km * 1000 ?? Infinity) / 1000,
-    waitTime: parseFloat(h.avg_wait_time_minutes ?? 999),
-    rating:   parseFloat(h.hospital_rating       ?? 0),
-    cost:     parseFloat(h.cost_level            ?? 3),
-    beds:     parseFloat(h.available_beds        ?? 0),
+    distance:    parseFloat(h.route_distance_meters ?? (h.distance_km ?? 0) * 1000) / 1000,
+    waitTime:    parseFloat(h.avg_wait_time_minutes ?? 999),
+    rating:      parseFloat(h.hospital_rating       ?? 0),
+    cost:        parseFloat(h.cost_level            ?? 3),
+    beds:        parseFloat(h.available_beds        ?? 0),
+    probability: parseFloat(h.success_probability   ?? 50),  // 0-100
 });
 
 // ─── Does H1 dominate H2? ────────────────────────────────────────────────────
@@ -31,21 +42,21 @@ const dominates = (h1, h2) => {
     const d1 = dims(h1);
     const d2 = dims(h2);
 
-    // Lower is better for distance / waitTime / cost
-    // Higher is better for rating / beds
     const atLeastAsGood =
-        d1.distance <= d2.distance &&
-        d1.waitTime <= d2.waitTime &&
-        d1.rating   >= d2.rating   &&
-        d1.cost     <= d2.cost     &&
-        d1.beds     >= d2.beds;
+        d1.distance    <= d2.distance    &&
+        d1.waitTime    <= d2.waitTime    &&
+        d1.rating      >= d2.rating      &&
+        d1.cost        <= d2.cost        &&
+        d1.beds        >= d2.beds        &&
+        d1.probability >= d2.probability;   // ← higher probability = better
 
     const strictlyBetterInOne =
-        d1.distance < d2.distance ||
-        d1.waitTime < d2.waitTime ||
-        d1.rating   > d2.rating   ||
-        d1.cost     < d2.cost     ||
-        d1.beds     > d2.beds;
+        d1.distance    < d2.distance    ||
+        d1.waitTime    < d2.waitTime    ||
+        d1.rating      > d2.rating      ||
+        d1.cost        < d2.cost        ||
+        d1.beds        > d2.beds        ||
+        d1.probability > d2.probability;
 
     return atLeastAsGood && strictlyBetterInOne;
 };
@@ -81,11 +92,12 @@ export const scoreHospitals = (hospitals, weights = DEFAULT_WEIGHTS) => {
     const all = hospitals.map(dims);
 
     const ranges = {
-        distance: { min: Math.min(...all.map(d => d.distance)), max: Math.max(...all.map(d => d.distance)) },
-        waitTime: { min: Math.min(...all.map(d => d.waitTime)), max: Math.max(...all.map(d => d.waitTime)) },
-        rating:   { min: Math.min(...all.map(d => d.rating)),   max: Math.max(...all.map(d => d.rating))   },
-        cost:     { min: Math.min(...all.map(d => d.cost)),     max: Math.max(...all.map(d => d.cost))     },
-        beds:     { min: Math.min(...all.map(d => d.beds)),     max: Math.max(...all.map(d => d.beds))     },
+        distance:    { min: Math.min(...all.map(d => d.distance)),    max: Math.max(...all.map(d => d.distance))    },
+        waitTime:    { min: Math.min(...all.map(d => d.waitTime)),    max: Math.max(...all.map(d => d.waitTime))    },
+        rating:      { min: Math.min(...all.map(d => d.rating)),      max: Math.max(...all.map(d => d.rating))      },
+        cost:        { min: Math.min(...all.map(d => d.cost)),        max: Math.max(...all.map(d => d.cost))        },
+        beds:        { min: Math.min(...all.map(d => d.beds)),        max: Math.max(...all.map(d => d.beds))        },
+        probability: { min: Math.min(...all.map(d => d.probability)), max: Math.max(...all.map(d => d.probability)) },
     };
 
     const w = { ...DEFAULT_WEIGHTS, ...weights };
@@ -93,11 +105,12 @@ export const scoreHospitals = (hospitals, weights = DEFAULT_WEIGHTS) => {
     return hospitals.map((h, i) => {
         const d = all[i];
         const score =
-            w.distance * normalise(d.distance, ranges.distance.min, ranges.distance.max, true)  +
-            w.waitTime * normalise(d.waitTime, ranges.waitTime.min, ranges.waitTime.max, true)  +
-            w.rating   * normalise(d.rating,   ranges.rating.min,   ranges.rating.max,   false) +
-            w.cost     * normalise(d.cost,     ranges.cost.min,     ranges.cost.max,     true)  +
-            w.beds     * normalise(d.beds,     ranges.beds.min,     ranges.beds.max,     false);
+            w.distance    * normalise(d.distance,    ranges.distance.min,    ranges.distance.max,    true)  +
+            w.waitTime    * normalise(d.waitTime,    ranges.waitTime.min,    ranges.waitTime.max,    true)  +
+            w.rating      * normalise(d.rating,      ranges.rating.min,      ranges.rating.max,      false) +
+            w.cost        * normalise(d.cost,        ranges.cost.min,        ranges.cost.max,        true)  +
+            w.beds        * normalise(d.beds,        ranges.beds.min,        ranges.beds.max,        false) +
+            (w.probability ?? 0) * normalise(d.probability, ranges.probability.min, ranges.probability.max, false);
 
         return { ...h, paretoScore: Math.round(score * 100) };
     });

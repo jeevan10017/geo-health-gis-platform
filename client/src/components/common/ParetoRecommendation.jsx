@@ -20,6 +20,10 @@ const TopChoiceCard = ({ hospital, onClick }) => {
         ? (hospital.route_distance_meters / 1000).toFixed(1)
         : hospital.distance_km ?? '—';
 
+    // Show composite score if Advanced Pareto Optimal was run, else Pareto score
+    const displayScore = hospital._composite ?? hospital.paretoScore;
+    const hasAdvancedPareto = hospital._composite != null;
+
     return (
         <div
             onClick={() => onClick(hospital.hospital_id)}
@@ -29,7 +33,7 @@ const TopChoiceCard = ({ hospital, onClick }) => {
                 <Trophy size={18} className="text-yellow-300 flex-shrink-0 mt-0.5" />
                 <div className="min-w-0">
                     <p className="text-xs font-semibold text-indigo-200 uppercase tracking-wider">
-                        Top Recommendation
+                        {hasAdvancedPareto ? '⭐ Advanced Pareto Optimal #1' : 'Top Recommendation'}
                     </p>
                     <h3 className="font-bold text-base leading-tight mt-0.5 truncate">
                         {hospital.hospital_name || hospital.name}
@@ -37,7 +41,7 @@ const TopChoiceCard = ({ hospital, onClick }) => {
                     <p className="text-xs text-indigo-200 mt-0.5 truncate">{hospital.address}</p>
                 </div>
                 <span className="flex-shrink-0 bg-yellow-400 text-yellow-900 text-xs font-black px-2 py-0.5 rounded-full ml-auto">
-                    {hospital.paretoScore}/100
+                    {displayScore}/100
                 </span>
             </div>
 
@@ -55,10 +59,18 @@ const TopChoiceCard = ({ hospital, onClick }) => {
                 {hospital.available_beds != null && (
                     <Stat icon={Bed} value={`${hospital.available_beds} beds`} color="text-indigo-200" />
                 )}
+                {hospital.success_probability != null && (
+                    <span className="text-xs text-indigo-200 font-semibold">
+                        {hospital.success_probability}% success
+                    </span>
+                )}
             </div>
 
             <p className="text-xs text-indigo-300 mt-2">
-                Pareto-optimal - no other hospital beats this across all your priorities.
+                {hasAdvancedPareto
+                    ? `Composite score: 35% survival + 35% Monte Carlo + 30% Pareto${hospital._explanation ? ' — ' + hospital._explanation : ''}`
+                    : 'Pareto-optimal — no other hospital beats this across all your priorities.'
+                }
             </p>
         </div>
     );
@@ -97,7 +109,7 @@ const ParetoRow = ({ hospital, rank, onClick }) => {
                 </div>
             </div>
             <span className="flex-shrink-0 text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
-                {hospital.paretoScore}
+                {hospital._composite ?? hospital.paretoScore}
             </span>
         </div>
     );
@@ -150,8 +162,10 @@ const ParetoRecommendation = ({ topChoice, paretoFront, onHospitalSelect }) => {
             <div className="flex items-start gap-1.5 px-1">
                 <Info size={11} className="text-slate-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-400 leading-tight">
-                    Pareto-optimal means no single hospital beats these in <em>all</em> categories simultaneously.
-                    The score reflects your stated priorities.
+                    {topChoice._composite != null
+                        ? 'Advanced Pareto Optimal fuses Survival score, Monte Carlo probability, and 6D Pareto — tap ⭐ Advanced Pareto for emergency details.'
+                        : 'Pareto-optimal means no single hospital beats these in all categories simultaneously. Tap ⭐ Advanced Pareto for survival + uncertainty analysis.'
+                    }
                 </p>
             </div>
         </div>

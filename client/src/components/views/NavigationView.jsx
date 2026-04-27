@@ -7,10 +7,11 @@ import {
 import L from 'leaflet';
 import {
     X, Clock, Ruler, Zap, AlertTriangle,
-    ChevronRight, RefreshCw, Mountain,
+    ChevronRight, RefreshCw, Mountain, Volume2, VolumeX,
 } from 'lucide-react';
 import { getOrsRoute, getRouteGeometry } from '../../services/apiService';
 import RoutingMachine from '../map/RoutingMachine';
+import { useTTS } from '../analytics/VoiceQueryButton';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,8 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
     const watchIdRef      = useRef(null);
     const lastRerouteRef  = useRef(0);
 
+    const { speak, stop, toggle, isSpeaking, enabled } = useTTS();
+
     // ── Route fetcher ─────────────────────────────────────────────────────────
 
     const fetchRoute = useCallback(async (fromLoc, showLoading = true) => {
@@ -202,28 +205,39 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
         else             setIsRerouting(true);
 
         try {
-            // Layer 1: ORS (colored segments + surface data)
+            // Layer 1: ORS
             const orsData = await getOrsRoute(fromLoc[0], fromLoc[1], toLat, toLon);
             if (orsData?.geometry) {
                 routeGeoJSONRef.current = orsData.geometry;
                 setRouteData(orsData);
                 setRoutingMethod('ors');
                 setRouteKey(k => k + 1);
+                if (showLoading) {
+                    const t = orsData.total_time_minutes;
+                    const d = orsData.total_distance_m ? (orsData.total_distance_m/1000).toFixed(1) : '?';
+                    speak(`Route ready. ${t} minutes, ${d} kilometres to ${hospital?.hospital_name || hospital?.name || 'destination'}.`);
+                } else {
+                    speak('Route recalculated.');
+                }
                 return;
             }
 
-            // Layer 2: pgRouting
+            // Layer 2: Bidirectional A* (server-side pgRouting)
             const pgData = await getRouteGeometry(fromLoc[0], fromLoc[1], toLat, toLon);
             if (pgData?.geometry) {
                 routeGeoJSONRef.current = pgData.geometry;
                 setRouteData(pgData);
-                setRoutingMethod('pgrouting');
+                setRoutingMethod(pgData.routing_method ?? 'bdAstar_time');
                 setRouteKey(k => k + 1);
+                if (showLoading) {
+                    speak(`Route ready. Approximately ${pgData.total_time_minutes} minutes to ${hospital?.hospital_name || hospital?.name || 'destination'}.`);
+                }
                 return;
             }
 
             // Layer 3: OSRM
             setRoutingMethod('osrm');
+            if (showLoading) speak('Using standard routing. Follow the path on the map.');
 
         } catch (err) {
             console.error('[Nav] route error:', err);
@@ -232,9 +246,27 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
             setIsLoading(false);
             setIsRerouting(false);
         }
-    }, [hospital]);
+    }, [hospital, speak]);
 
     useEffect(() => { fetchRoute(initialLocation, true); }, [fetchRoute]); // eslint-disable-line
+
+    // ── Auto-announce next turn when within 200m ──────────────────────────────
+    const lastAnnouncedStep = useRef(-1);
+    useEffect(() => {
+        if (!routeData?.steps?.length || !livePosition || routingMethod !== 'ors') return;
+        const steps = routeData.steps.filter(s => s.distance_m > 2);
+        // Find next unannounced step with instruction
+        steps.forEach((step, i) => {
+            if (i <= lastAnnouncedStep.current) return;
+            if (!step.instruction) return;
+            // Announce when within ~200m of this step's waypoint (approximate by cumulative distance)
+            const cumDist = steps.slice(0, i).reduce((s, st) => s + (st.distance_m ?? 0), 0);
+            if (cumDist < 300 && i > 0) {
+                lastAnnouncedStep.current = i;
+                speak(step.instruction);
+            }
+        });
+    }, [livePosition, routeData, routingMethod, speak]);
 
     // ── Live GPS ──────────────────────────────────────────────────────────────
 
@@ -287,18 +319,29 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
     const timeMin = routeData?.total_time_minutes ?? hospital?.travel_time_minutes ?? '—';
     const isOrs   = routingMethod === 'ors';
     const steps   = (routeData?.steps ?? []).filter(s => s.distance_m > 2);
+    const hasSteps = steps.length > 0;
 
-    const methodLabel = {
-        ors:       '🌐 ORS — Speed/Terrain aware',
-        pgrouting: '⚡ pgRouting — Speed-aware',
-        osrm:      '📍 OSRM Routing',
-    }[routingMethod] ?? 'Calculating…';
+    // ── Routing method display ────────────────────────────────────────────────
 
-    const methodColor = {
-        ors:       'text-emerald-700 bg-emerald-50 border-emerald-200',
-        pgrouting: 'text-indigo-700 bg-indigo-50 border-indigo-200',
-        osrm:      'text-amber-700 bg-amber-50 border-amber-200',
-    }[routingMethod] ?? 'text-slate-500 bg-slate-50 border-slate-200';
+    const METHOD_INFO = {
+        'ors':            { label: '🌐 ORS',             sub: 'Speed & terrain aware',           color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+        'bdAstar_time':   { label: '⚡ Bidir A★',        sub: 'Bidirectional A* · speed cost',   color: 'text-indigo-700 bg-indigo-50 border-indigo-200'   },
+        'bdAstar_dist':   { label: '⚡ Bidir A★',        sub: 'Bidirectional A* · distance',      color: 'text-indigo-700 bg-indigo-50 border-indigo-200'   },
+        'ch_bdAstar':     { label: '🚀 CH + A★',         sub: 'Contraction Hierarchies · fastest',color: 'text-purple-700 bg-purple-50 border-purple-200'   },
+        'ch_offline':     { label: '📦 CH Offline',      sub: 'Client-side graph routing',        color: 'text-orange-700 bg-orange-50 border-orange-200'   },
+        'dijkstra_time':  { label: '🔷 Dijkstra',        sub: 'Speed-based',                      color: 'text-blue-700 bg-blue-50 border-blue-200'         },
+        'dijkstra_dist':  { label: '🔷 Dijkstra',        sub: 'Distance-based',                   color: 'text-blue-700 bg-blue-50 border-blue-200'         },
+        'time_based':     { label: '⚡ Bidir A★',        sub: 'Speed-based routing',              color: 'text-indigo-700 bg-indigo-50 border-indigo-200'   },
+        'distance_based': { label: '⚡ Bidir A★',        sub: 'Distance-based routing',           color: 'text-indigo-700 bg-indigo-50 border-indigo-200'   },
+        'pgrouting':      { label: '⚡ Bidir A★',        sub: 'Speed-based routing',              color: 'text-indigo-700 bg-indigo-50 border-indigo-200'   },
+        'osrm':           { label: '📍 OSRM',            sub: 'Standard road routing',            color: 'text-amber-700 bg-amber-50 border-amber-200'      },
+        'cached':         { label: '📦 Cached',          sub: 'Stored from last session',         color: 'text-green-700 bg-green-50 border-green-200'      },
+    };
+
+    const mi         = METHOD_INFO[routingMethod] ?? { label: '⌛ Calculating…', sub: '', color: 'text-slate-500 bg-slate-50 border-slate-200' };
+    const methodLabel = mi.label;
+    const methodSub   = mi.sub;
+    const methodColor = mi.color;
 
     // ── JSX ───────────────────────────────────────────────────────────────────
 
@@ -319,6 +362,16 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
                     </div>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 flex-shrink-0">
                         <X size={20} />
+                    </button>
+                    <button
+                        onClick={toggle}
+                        title={enabled ? 'Mute voice guidance' : 'Enable voice guidance'}
+                        className={`p-2 rounded-full flex-shrink-0 transition-colors ${enabled ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-400 hover:bg-slate-100'}`}
+                    >
+                        {enabled
+                            ? <Volume2 size={20} className={isSpeaking ? 'animate-pulse' : ''} />
+                            : <VolumeX size={20} />
+                        }
                     </button>
                 </div>
 
@@ -346,6 +399,7 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
 
                         <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${methodColor}`}>
                             {methodLabel}
+                            {methodSub && <span className="font-normal opacity-75">· {methodSub}</span>}
                         </span>
 
                         {isOrs && routeData.has_unpaved_roads && (
@@ -375,17 +429,31 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
                     </div>
                 )}
 
-                {/* Turn-by-turn */}
-                {steps.length > 0 && (
+                {/* Turn-by-turn steps */}
+                {hasSteps && (
                     <div className="flex-grow overflow-y-auto">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 pt-3 pb-1">
                             Turn-by-Turn · {steps.length} steps
+                            {isOrs && <span className="ml-1 text-emerald-500">· ORS</span>}
+                            {['bdAstar_time','bdAstar_dist','time_based','distance_based','pgrouting','ch_bdAstar','ch_offline'].includes(routingMethod) && <span className="ml-1 text-indigo-400">· A★ Routing</span>}
                         </p>
                         <ul className="px-1 pb-4 space-y-px">
                             {steps.map((step, i) => (
                                 <StepCard key={i} step={step} index={i} isOrs={isOrs} />
                             ))}
                         </ul>
+                    </div>
+                )}
+
+                {!isLoading && !hasSteps && routingMethod === 'osrm' && (
+                    <div className="flex-grow p-4 text-center text-xs text-slate-400">
+                        Turn-by-turn available with ORS or A★ routing.
+                    </div>
+                )}
+
+                {!isLoading && !hasSteps && routingMethod !== 'osrm' && (
+                    <div className="flex-grow p-4 text-center text-xs text-slate-400">
+                        No step data returned. Route is shown on the map.
                     </div>
                 )}
             </div>
@@ -397,9 +465,6 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
 
                     {/* Auto-fit */}
                     {routeData?.geometry && <FitRoute key={routeKey} geoJSON={routeData.geometry} />}
-
-                    {/* Color legend */}
-                    {isOrs && <RouteLegendControl />}
 
                     {/* Breadcrumb trail */}
                     {positionHistory.length > 1 && (
@@ -424,17 +489,38 @@ const NavigationView = ({ userLocation: initialLocation, hospital, onClose }) =>
                         </Marker>
                     )}
 
-                    {/* ORS colored segments */}
+                    {/* ORS colored segments with tooltips */}
                     {isOrs && routeData?.colored_segments?.length > 0 && (
-                        <ColoredRoute segments={routeData.colored_segments} routeKey={routeKey} />
+                        <>
+                            {routeData.colored_segments.map((seg, i) => {
+                                const p = seg.properties ?? {};
+                                const timeMin = p.time_s ? Math.max(1, Math.round(p.time_s / 60)) : null;
+                                const dist    = p.distance_m >= 1000 ? `${(p.distance_m / 1000).toFixed(1)} km` : `${p.distance_m} m`;
+                                const tip     = [
+                                    p.road && p.road !== 'Unnamed road' ? p.road : null,
+                                    timeMin ? `~${timeMin} min` : null,
+                                    dist,
+                                    p.speed_kmh ? `${p.speed_kmh} km/h` : null,
+                                    p.label,
+                                ].filter(Boolean).join(' · ');
+                                return (
+                                    <GeoJSON
+                                        key={`nav-seg-${routeKey}-${i}`}
+                                        data={seg}
+                                        style={{ color: p.color ?? '#16a34a', weight: 7, opacity: 0.88, lineCap: 'round' }}
+                                        onEachFeature={(_, layer) => tip && layer.bindTooltip(tip, { sticky: true, className: 'hospital-label' })}
+                                    />
+                                );
+                            })}
+                        </>
                     )}
 
-                    {/* pgRouting single-color route */}
-                    {routingMethod === 'pgrouting' && routeData?.geometry && (
+                    {/* A★/pgR single-color route */}
+                    {['bdAstar_time','bdAstar_dist','time_based','distance_based','pgrouting','dijkstra_time','dijkstra_dist','ch_bdAstar','ch_offline'].includes(routingMethod) && routeData?.geometry && (
                         <GeoJSON
                             key={routeKey}
                             data={routeData.geometry}
-                            style={{ color:'#6366f1', weight:6, opacity:0.85 }}
+                            style={{ color: '#6366f1', weight: 6, opacity: 0.85 }}
                         />
                     )}
 
